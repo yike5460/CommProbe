@@ -1,0 +1,11 @@
+# Reddit API
+praw>=7.7.0
+
+# AWS Integration (boto3 is provided by Lambda runtime, but including for local testing)
+boto3>=1.28.0
+
+# Utilities required by praw
+requests>=2.31.0
+
+# Note: Removed pandas, numpy, tqdm as they're not used in Lambda function
+# The Lambda function only uses core Python libraries and praw for Reddit access
