@@ -1,14 +1,14 @@
-import { App, Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { App, Stack, StackProps, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as lambdaPython from '@aws-cdk/aws-lambda-python-alpha';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as sfnTasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -21,7 +21,8 @@ export class LegalCrawlerStack extends Stack {
     // ===========================================
     const redditClientId = this.node.tryGetContext('redditClientId');
     const redditClientSecret = this.node.tryGetContext('redditClientSecret');
-    
+    const redditUserAgent = this.node.tryGetContext('redditUserAgent') || 'legal-legal-crawler/1.0 by u/YOUR_USERNAME';
+
     if (!redditClientId || !redditClientSecret) {
       throw new Error(
         'Reddit API credentials are required. Please provide them using:\n' +
@@ -91,7 +92,7 @@ export class LegalCrawlerStack extends Stack {
     const dependenciesLayer = new lambda.LayerVersion(this, 'DependenciesLayer', {
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/layer'), {
         bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          image: lambda.Runtime.PYTHON_3_12.bundlingImage,
           command: [
             'bash',
             '-c',
@@ -99,7 +100,7 @@ export class LegalCrawlerStack extends Stack {
           ],
         },
       }),
-      compatibleRuntimes: [lambda.Runtime.PYTHON_3_11],
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
       description: 'Dependencies for Reddit crawler Lambda functions',
     });
 
@@ -109,7 +110,7 @@ export class LegalCrawlerStack extends Stack {
     
     // Collector Lambda
     const collectorFunction = new lambda.Function(this, 'CollectorFunction', {
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/collector')),
       handler: 'index.handler',
       timeout: Duration.minutes(15),
@@ -118,7 +119,7 @@ export class LegalCrawlerStack extends Stack {
         BUCKET_NAME: rawDataBucket.bucketName,
         REDDIT_CLIENT_ID: redditClientId,
         REDDIT_CLIENT_SECRET: redditClientSecret,
-        REDDIT_USER_AGENT: this.node.tryGetContext('redditUserAgent') || 'legal-crawler/1.0',
+        REDDIT_USER_AGENT: redditUserAgent,
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -129,14 +130,14 @@ export class LegalCrawlerStack extends Stack {
 
     // Analyzer Lambda (Bedrock integration)
     const analyzerFunction = new lambda.Function(this, 'AnalyzerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/analyzer')),
       handler: 'index.handler',
       timeout: Duration.minutes(15),
       memorySize: 2048,
       environment: {
         BUCKET_NAME: rawDataBucket.bucketName,
-        MODEL_ID: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+        MODEL_ID: 'anthropic.claude-sonnet-4-20250514-v1:0',
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -148,7 +149,7 @@ export class LegalCrawlerStack extends Stack {
         effect: iam.Effect.ALLOW,
         actions: ['bedrock:InvokeModel'],
         resources: [
-          `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
+          `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
         ],
       })
     );
@@ -158,7 +159,7 @@ export class LegalCrawlerStack extends Stack {
 
     // Storer Lambda (DynamoDB writer)
     const storerFunction = new lambda.Function(this, 'StorerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/storer')),
       handler: 'index.handler',
       timeout: Duration.minutes(5),
@@ -232,7 +233,7 @@ export class LegalCrawlerStack extends Stack {
     // ===========================================
     
     const triggerFunction = new lambda.Function(this, 'TriggerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromInline(`
 import boto3
 import json
@@ -268,6 +269,101 @@ def handler(event, context):
 
     // Grant permission to trigger state machine
     stateMachine.grantStartExecution(triggerFunction);
+
+    // ===========================================
+    // API Gateway for External Access
+    // ===========================================
+
+    // API Lambda with dedicated code file
+    const apiFunction = new lambda.Function(this, 'ApiFunction', {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/api')),
+      handler: 'index.handler',
+      timeout: Duration.seconds(30),
+      environment: {
+        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+      },
+      layers: [dependenciesLayer],
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant permissions to API function
+    stateMachine.grantStartExecution(apiFunction);
+    stateMachine.grantRead(apiFunction);
+
+    // Create REST API
+    const api = new apigateway.RestApi(this, 'CrawlerApi', {
+      restApiName: 'Supio Reddit Crawler API',
+      description: 'API for triggering and monitoring Reddit crawl jobs',
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
+      },
+      deployOptions: {
+        stageName: 'v1',
+        loggingLevel: apigateway.MethodLoggingLevel.INFO,
+        dataTraceEnabled: true,
+      },
+    });
+
+    // Lambda integration
+    const lambdaIntegration = new apigateway.LambdaIntegration(apiFunction, {
+      requestTemplates: { 'application/json': `{ "statusCode": "200" }` },
+    });
+
+    // API routes
+    api.root.addMethod('GET', lambdaIntegration); // GET / - Documentation
+
+    const triggerResource = api.root.addResource('trigger');
+    triggerResource.addMethod('POST', lambdaIntegration); // POST /trigger
+
+    const statusResource = api.root.addResource('status');
+    const statusByIdResource = statusResource.addResource('{executionName}');
+    statusByIdResource.addMethod('GET', lambdaIntegration); // GET /status/{executionName}
+
+    const executionsResource = api.root.addResource('executions');
+    executionsResource.addMethod('GET', lambdaIntegration); // GET /executions
+
+    // Output the API URL
+    new CfnOutput(this, 'ApiUrl', {
+      value: api.url,
+      description: 'URL of the Reddit Crawler API',
+      exportName: 'RedditCrawlerApiUrl',
+    });
+
+    // Output the API Key for external access (if needed)
+    const apiKey = api.addApiKey('CrawlerApiKey', {
+      apiKeyName: 'supio-reddit-crawler-key',
+      description: 'API Key for Reddit Crawler API',
+    });
+
+    const usagePlan = api.addUsagePlan('CrawlerUsagePlan', {
+      name: 'supio-reddit-crawler-usage',
+      description: 'Usage plan for Reddit Crawler API',
+      throttle: {
+        rateLimit: 10,  // 10 requests per second
+        burstLimit: 20, // 20 concurrent requests
+      },
+      quota: {
+        limit: 1000,    // 1000 requests per month
+        period: apigateway.Period.MONTH,
+      },
+      apiStages: [
+        {
+          api: api,
+          stage: api.deploymentStage,
+        },
+      ],
+    });
+
+    usagePlan.addApiKey(apiKey);
+
+    new CfnOutput(this, 'ApiKeyId', {
+      value: apiKey.keyId,
+      description: 'API Key ID for Reddit Crawler API',
+      exportName: 'RedditCrawlerApiKeyId',
+    });
   }
 }
 

@@ -22,7 +22,7 @@ A data collection and analysis pipeline for monitoring legal technology discussi
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        User Interface                        │
+│                        User Interface                       │
 │                   (Next.js on Cloudflare)                   │
 └─────────────────┬───────────────────────┬───────────────────┘
                   │                       │
@@ -34,20 +34,20 @@ A data collection and analysis pipeline for monitoring legal technology discussi
              │
              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Data Processing Layer                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐ │
-│  │   Collector  │→ │   Analyzer   │→ │   Aggregator     │ │
-│  │ (Lambda/ECS) │  │ (Step Func)  │  │  (Lambda)        │ │
-│  └──────────────┘  └──────────────┘  └──────────────────┘ │
+│                    Data Processing Layer                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │   Collector  │→ │   Analyzer   │→ │   Aggregator     │   │
+│  │ (Lambda/ECS) │  │ (Step Func)  │  │  (Lambda)        │   │
+│  └──────────────┘  └──────────────┘  └──────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
              │                 │                 │
              ▼                 ▼                 ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      Storage Layer                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐ │
-│  │  Raw Data    │  │ Processed    │  │   Aggregated     │ │
-│  │  (S3)        │  │ Data (DDB)   │  │   Data (DDB)     │ │
-│  └──────────────┘  └──────────────┘  └──────────────────┘ │
+│                      Storage Layer                          |
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │  Raw Data    │  │ Processed    │  │   Aggregated     │   │
+│  │  (S3)        │  │ Data (DDB)   │  │   Data (DDB)     │   │
+│  └──────────────┘  └──────────────┘  └──────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -892,7 +892,7 @@ class BedrockAnalyzer:
             region_name='us-east-1'  # Claude Sonnet 4 availability
         )
         # Claude Sonnet 4 model ID
-        self.model_id = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+        self.model_id = 'anthropic.claude-sonnet-4-20250514-v1:0'
         self.logger = logging.getLogger(__name__)
     
     def analyze_post(self, post: Dict[str, Any]) -> Dict[str, Any]:
