@@ -15,7 +15,7 @@ def handler(event, context):
     print(f"Starting analysis with event: {json.dumps(event)}")
     
     # Get S3 location from previous step
-    s3_location = event.get('s3_location')
+    s3_location = event.get('body', {}).get('s3_location') or event.get('s3_location')
     if not s3_location:
         raise ValueError("No s3_location provided in event")
     
@@ -147,7 +147,7 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         response = bedrock.invoke_model(
-            modelId=os.environ.get('MODEL_ID', 'anthropic.claude-sonnet-4-20250514-v1:0'),
+            modelId=os.environ.get('MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0'),
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 1000,
@@ -171,7 +171,7 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
         # Add metadata
         analysis['post_id'] = post['id']
         analysis['analyzed_at'] = datetime.utcnow().isoformat()
-        analysis['model_used'] = os.environ.get('MODEL_ID', 'anthropic.claude-sonnet-4-20250514-v1:0')
+        analysis['model_used'] = os.environ.get('MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0')
         
         return analysis
         

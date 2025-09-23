@@ -892,7 +892,7 @@ class BedrockAnalyzer:
             region_name='us-east-1'  # Claude Sonnet 4 availability
         )
         # Claude Sonnet 4 model ID
-        self.model_id = 'anthropic.claude-sonnet-4-20250514-v1:0'
+        self.model_id = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
         self.logger = logging.getLogger(__name__)
     
     def analyze_post(self, post: Dict[str, Any]) -> Dict[str, Any]:

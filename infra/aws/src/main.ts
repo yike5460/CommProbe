@@ -137,7 +137,7 @@ export class LegalCrawlerStack extends Stack {
       memorySize: 2048,
       environment: {
         BUCKET_NAME: rawDataBucket.bucketName,
-        MODEL_ID: 'anthropic.claude-sonnet-4-20250514-v1:0',
+        MODEL_ID: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -149,13 +149,14 @@ export class LegalCrawlerStack extends Stack {
         effect: iam.Effect.ALLOW,
         actions: ['bedrock:InvokeModel'],
         resources: [
-          `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:${this.region}::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
         ],
       })
     );
 
-    // Grant S3 permissions to analyzer
-    rawDataBucket.grantRead(analyzerFunction);
+    // Grant S3 permissions to analyzer (needs write access to save analysis results)
+    rawDataBucket.grantReadWrite(analyzerFunction);
 
     // Storer Lambda (DynamoDB writer)
     const storerFunction = new lambda.Function(this, 'StorerFunction', {
@@ -173,6 +174,9 @@ export class LegalCrawlerStack extends Stack {
 
     // Grant DynamoDB permissions to storer
     insightsTable.grantReadWriteData(storerFunction);
+
+    // Grant S3 read permissions to storer (needs to read analysis results)
+    rawDataBucket.grantRead(storerFunction);
 
     // ===========================================
     // Step Functions State Machine
