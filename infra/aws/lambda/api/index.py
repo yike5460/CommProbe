@@ -124,7 +124,7 @@ def handle_get_status(event: Dict[str, Any], context: Any, headers: Dict[str, st
 
         # Construct full execution ARN
         account_id = context.invoked_function_arn.split(':')[4]
-        region = os.environ.get('AWS_REGION', 'us-east-1')
+        region = os.environ.get('AWS_REGION', 'us-west-2')
         execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-reddit-insights-pipeline:{execution_name}"
 
         # Get execution details

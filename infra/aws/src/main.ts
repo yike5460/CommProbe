@@ -70,7 +70,9 @@ export class LegalCrawlerStack extends Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
       removalPolicy: RemovalPolicy.DESTROY, // For dev - change to RETAIN for production
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
     });
 
     // Add GSI for priority access
@@ -138,6 +140,7 @@ export class LegalCrawlerStack extends Stack {
       environment: {
         BUCKET_NAME: rawDataBucket.bucketName,
         MODEL_ID: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        BEDROCK_REGION: this.region,
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -151,6 +154,9 @@ export class LegalCrawlerStack extends Stack {
         resources: [
           `arn:aws:bedrock:${this.region}::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0`,
           `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
         ],
       })
     );

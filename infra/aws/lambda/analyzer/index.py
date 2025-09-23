@@ -6,14 +6,20 @@ from typing import Dict, List, Any
 import time
 
 s3 = boto3.client('s3')
-bedrock = boto3.client('bedrock-runtime', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+bedrock = boto3.client('bedrock-runtime', region_name='us-west-2')
+PRIORITY_SCORE_THRESHOLD = 5
 
 def handler(event, context):
     """
     Lambda handler for analyzing Reddit posts using Amazon Bedrock
     """
     print(f"Starting analysis with event: {json.dumps(event)}")
-    
+
+    # Debug bedrock region
+    bedrock_region = os.environ.get('BEDROCK_REGION', 'us-west-2')
+    print(f"BEDROCK_REGION environment variable: {bedrock_region}")
+    print(f"Bedrock client region: {bedrock.meta.region_name}")
+
     # Get S3 location from previous step
     s3_location = event.get('body', {}).get('s3_location') or event.get('s3_location')
     if not s3_location:
@@ -31,30 +37,41 @@ def handler(event, context):
     print(f"Analyzing {len(posts)} posts")
     
     # Analyze posts in batches
-    analyzed_posts = []
+    analyzed_posts = []  # High priority insights only
+    all_analysis_results = []  # All analysis results for compliance/debugging
     batch_size = 10
-    
+
     for i in range(0, len(posts), batch_size):
         batch = posts[i:i + batch_size]
         for post in batch:
             try:
                 analysis = analyze_post(post)
-                if analysis and analysis.get('priority_score', 0) >= 5:
-                    analyzed_posts.append({
+                if analysis:
+                    # Store all analysis results for compliance/debugging
+                    all_analysis_results.append({
                         'post': post,
                         'analysis': analysis
                     })
+
+                    # Only include high priority insights in main results
+                    if analysis.get('priority_score', 0) >= PRIORITY_SCORE_THRESHOLD:
+                        analyzed_posts.append({
+                            'post': post,
+                            'analysis': analysis
+                        })
                 time.sleep(0.2)  # Rate limiting for Bedrock
             except Exception as e:
                 print(f"Error analyzing post {post.get('id')}: {str(e)}")
     
     # Save analyzed results back to S3
     timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    analysis_key = f"analyzed/{datetime.utcnow().strftime('%Y-%m-%d')}/analysis_{timestamp}.json"
-    
+    date_str = datetime.utcnow().strftime('%Y-%m-%d')
+
+    # Save high-priority insights (existing behavior)
+    filtered_analysis_key = f"analyzed/{date_str}/filtered_analysis_{timestamp}.json"
     s3.put_object(
         Bucket=os.environ['BUCKET_NAME'],
-        Key=analysis_key,
+        Key=filtered_analysis_key,
         Body=json.dumps({
             'analyzed_at': datetime.utcnow().isoformat(),
             'posts_analyzed': len(posts),
@@ -63,8 +80,26 @@ def handler(event, context):
         }),
         ContentType='application/json'
     )
+
+    # Save all analysis results for compliance/debugging
+    full_analysis_key = filtered_analysis_key.replace('filtered_', 'full_')
+    s3.put_object(
+        Bucket=os.environ['BUCKET_NAME'],
+        Key=full_analysis_key,
+        Body=json.dumps({
+            'analyzed_at': datetime.utcnow().isoformat(),
+            'posts_analyzed': len(posts),
+            'total_analysis_results': len(all_analysis_results),
+            'high_priority_insights': len(analyzed_posts),
+            'priority_threshold': PRIORITY_SCORE_THRESHOLD,
+            'all_analysis_results': all_analysis_results
+        }),
+        ContentType='application/json'
+    )
     
-    print(f"Analysis complete. Generated {len(analyzed_posts)} insights")
+    print(f"Analysis complete. Generated {len(analyzed_posts)} high-priority insights, {len(all_analysis_results)} total analysis results")
+    print(f"High-priority insights saved to: {filtered_analysis_key}")
+    print(f"All analysis results saved to: {full_analysis_key}")
     
     return {
         'statusCode': 200,
@@ -87,61 +122,62 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
     
     prompt = f"""
     Analyze this Reddit post from the legal technology community r/{post['subreddit']}.
-    
+
     Post Title: {post['title']}
     Post Content: {post.get('content', 'No text content')}
     Post Score: {post['score']} points
     Number of Comments: {post['num_comments']}
-    
+
     Top Comments:
     {comments_text}
-    
+
     Analyze this post as a Supio product analyst to extract actionable insights:
-    
+
     1. Feature Discovery:
        - Identify specific features users are requesting that Supio could build
        - Categorize: document_automation, ai_accuracy, integration, workflow, discovery_management
        - Assign priority score (1-10) based on user pain level and market demand
        - Note if this is a quick_win, strategic_feature, or future_consideration
-    
+
     2. Competitive Intelligence:
        - Identify mentions of competitors (Harvey, Casetext, Lexis+, Westlaw, others)
        - Assess sentiment toward each competitor (-1 to 1)
        - Extract specific strengths/weaknesses mentioned
        - Note if user is considering switching from/to any solution
-    
+
     3. User Segmentation:
        - Identify user type: solo_practitioner, small_firm, mid_market, large_firm, in_house
        - Assess AI readiness: enthusiastic, cautious, skeptical, hostile
        - Note tech maturity level based on tools mentioned
        - Identify decision-making factors (cost, accuracy, security, ease_of_use)
-    
+
     4. Pain Point Analysis:
        - Extract specific workflow inefficiencies or manual processes
        - Map each pain point to potential Supio solution
        - Assess implementation complexity: simple_config, new_feature, platform_change
        - Estimate ROI potential: hours_saved_weekly, error_reduction_percentage
-    
+
     5. Action Items for PM:
        - Flag if immediate PM review needed (true/false)
        - Suggest specific product roadmap items
        - Identify potential beta testing candidates
        - Note any urgent competitive threats
-    
-    Return your analysis as a valid JSON object with the following structure:
+
+    IMPORTANT: Return ONLY a valid JSON object with no markdown formatting, no code blocks, no explanations. Start directly with {{ and end with }}.
+
     {{
         "feature_summary": "one-line description",
-        "feature_category": "category",
-        "priority_score": 1-10,
-        "user_segment": "segment",
-        "competitors_mentioned": ["list"],
-        "supio_mentioned": boolean,
-        "action_required": boolean,
-        "suggested_action": "action",
-        "pain_points": ["list of pain points"],
+        "feature_category": "document_automation|ai_accuracy|integration|workflow|discovery_management|not_applicable",
+        "priority_score": 1,
+        "user_segment": "solo_practitioner|small_firm|mid_market|large_firm|in_house|consumer|not_applicable",
+        "competitors_mentioned": ["Harvey", "Casetext", "Lexis+", "Westlaw"],
+        "supio_mentioned": true|false,
+        "action_required": true|false,
+        "suggested_action": "quick_win|strategic_feature|future_consideration|no_action",
+        "pain_points": ["specific workflow inefficiency"],
         "competitive_advantage": "how this helps vs competitors",
-        "implementation_size": "small/medium/large",
-        "ai_readiness": "enthusiastic/cautious/skeptical/hostile"
+        "implementation_size": "small|medium|large|not_applicable",
+        "ai_readiness": "enthusiastic|cautious|skeptical|hostile|not_applicable"
     }}
     """
     
@@ -164,7 +200,7 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
         
         response_body = json.loads(response['body'].read())
         content = response_body['content'][0]['text']
-        
+
         # Parse the JSON response
         analysis = json.loads(content)
         
