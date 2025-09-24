@@ -7,6 +7,7 @@ from typing import Dict, List, Any
 
 s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
+PRIORITY_SCORE_THRESHOLD = 5
 
 def handler(event, context):
     """
@@ -43,7 +44,7 @@ def handler(event, context):
         analysis = insight_data['analysis']
         
         # Only store insights with priority >= 5
-        if analysis.get('priority_score', 0) >= 5:
+        if analysis.get('priority_score', 0) >= PRIORITY_SCORE_THRESHOLD:
             try:
                 item = create_dynamodb_item(post, analysis)
                 table.put_item(Item=item)

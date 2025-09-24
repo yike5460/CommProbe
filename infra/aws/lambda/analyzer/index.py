@@ -105,7 +105,7 @@ def handler(event, context):
         'statusCode': 200,
         'posts_analyzed': len(posts),
         'insights_generated': len(analyzed_posts),
-        's3_location': f"s3://{os.environ['BUCKET_NAME']}/{analysis_key}",
+        's3_location': f"s3://{os.environ['BUCKET_NAME']}/{filtered_analysis_key}",
         'timestamp': timestamp
     }
 

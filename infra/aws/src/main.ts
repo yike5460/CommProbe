@@ -292,6 +292,7 @@ def handler(event, context):
       timeout: Duration.seconds(30),
       environment: {
         STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+        INSIGHTS_TABLE_NAME: insightsTable.tableName,
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -300,6 +301,9 @@ def handler(event, context):
     // Grant permissions to API function
     stateMachine.grantStartExecution(apiFunction);
     stateMachine.grantRead(apiFunction);
+
+    // Grant DynamoDB read permissions for insights endpoints
+    insightsTable.grantReadData(apiFunction);
 
     // Create REST API
     const api = new apigateway.RestApi(this, 'CrawlerApi', {
@@ -334,6 +338,25 @@ def handler(event, context):
 
     const executionsResource = api.root.addResource('executions');
     executionsResource.addMethod('GET', lambdaIntegration); // GET /executions
+
+    // Priority 1: Essential Data Access Endpoints
+    const insightsResource = api.root.addResource('insights');
+    insightsResource.addMethod('GET', lambdaIntegration); // GET /insights
+
+    const insightByIdResource = insightsResource.addResource('{insightId}');
+    insightByIdResource.addMethod('GET', lambdaIntegration); // GET /insights/{insightId}
+
+    const analyticsResource = api.root.addResource('analytics');
+    const analyticsSummaryResource = analyticsResource.addResource('summary');
+    analyticsSummaryResource.addMethod('GET', lambdaIntegration); // GET /analytics/summary
+
+    // Priority 2: Configuration & Management Endpoints
+    const configResource = api.root.addResource('config');
+    configResource.addMethod('GET', lambdaIntegration); // GET /config
+    configResource.addMethod('PUT', lambdaIntegration); // PUT /config
+
+    const healthResource = api.root.addResource('health');
+    healthResource.addMethod('GET', lambdaIntegration); // GET /health
 
     // Output the API URL
     new CfnOutput(this, 'ApiUrl', {
