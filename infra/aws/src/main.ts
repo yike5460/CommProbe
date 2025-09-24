@@ -350,6 +350,21 @@ def handler(event, context):
     const analyticsSummaryResource = analyticsResource.addResource('summary');
     analyticsSummaryResource.addMethod('GET', lambdaIntegration); // GET /analytics/summary
 
+    // Priority 3: Enhanced Analytics Endpoints
+    const analyticsTrendsResource = analyticsResource.addResource('trends');
+    analyticsTrendsResource.addMethod('GET', lambdaIntegration); // GET /analytics/trends
+
+    const analyticsCompetitorsResource = analyticsResource.addResource('competitors');
+    analyticsCompetitorsResource.addMethod('GET', lambdaIntegration); // GET /analytics/competitors
+
+    // Priority 4: Operational Endpoints
+    const executionByIdResource = executionsResource.addResource('{executionName}');
+    executionByIdResource.addMethod('DELETE', lambdaIntegration); // DELETE /executions/{executionName}
+
+    const logsResource = api.root.addResource('logs');
+    const logsByIdResource = logsResource.addResource('{executionName}');
+    logsByIdResource.addMethod('GET', lambdaIntegration); // GET /logs/{executionName}
+
     // Priority 2: Configuration & Management Endpoints
     const configResource = api.root.addResource('config');
     configResource.addMethod('GET', lambdaIntegration); // GET /config
