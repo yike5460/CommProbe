@@ -154,7 +154,7 @@ Get filtered list of insights with pagination and analytics.
 {
   "data": [
     {
-      "insight_id": "INSIGHT#2025-09-23#PRIORITY#8#ID#1nnv6yo",
+      "insight_id": "INSIGHT-2025-09-23-PRIORITY-8-ID-1nnv6yo",
       "post_id": "1nnv6yo",
       "priority_score": 8,
       "feature_summary": "Document automation for contract review workflow",
@@ -190,7 +190,7 @@ Get detailed information for a specific insight including full post content.
 ```json
 {
   "data": {
-    "insight_id": "INSIGHT#2025-09-23#PRIORITY#8#ID#1nnv6yo",
+    "insight_id": "INSIGHT-2025-09-23-PRIORITY-8-ID-1nnv6yo",
     "post_id": "1nnv6yo",
     "post_url": "https://reddit.com/r/LawFirm/comments/1nnv6yo/...",
     "subreddit": "LawFirm",
@@ -272,7 +272,7 @@ Get aggregated analytics for dashboard and reporting.
     },
     "recent_high_priority": [
       {
-        "insight_id": "INSIGHT#2025-09-23#PRIORITY#9#ID#abc123",
+        "insight_id": "INSIGHT-2025-09-23-PRIORITY-9-ID-abc123",
         "priority_score": 9,
         "feature_summary": "AI-powered deposition analysis",
         "analyzed_at": "2025-09-23T15:30:00"
@@ -477,7 +477,7 @@ Get competitive analysis and market positioning insights for strategic decision 
         },
         "insights": [
           {
-            "insight_id": "INSIGHT#2025-09-23#PRIORITY#9#ID#abc123",
+            "insight_id": "INSIGHT-2025-09-23-PRIORITY-9-ID-abc123",
             "priority_score": 9,
             "feature_summary": "Users want Harvey-like AI but with better integration",
             "competitive_advantage": "Better workflow integration than Harvey",

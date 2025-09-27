@@ -89,12 +89,12 @@ def create_dynamodb_item(post: Dict[str, Any], analysis: Dict[str, Any]) -> Dict
     
     item = {
         # Primary Key
-        'PK': f"INSIGHT#{current_date}",
-        'SK': f"PRIORITY#{analysis['priority_score']}#ID#{post['id']}",
-        
+        'PK': f"INSIGHT-{current_date}",
+        'SK': f"PRIORITY-{analysis['priority_score']}-ID-{post['id']}",
+
         # GSI Keys
         'GSI1PK': 'PRIORITY',
-        'GSI1SK': f"SCORE#{analysis['priority_score']}#DATE#{current_date}",
+        'GSI1SK': f"SCORE-{analysis['priority_score']}-DATE-{current_date}",
         
         # Core Attributes
         'post_id': post['id'],

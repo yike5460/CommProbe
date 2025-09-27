@@ -168,7 +168,7 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
     {{
         "feature_summary": "one-line description",
         "feature_category": "document_automation|ai_accuracy|integration|workflow|discovery_management|not_applicable",
-        "priority_score": 1,
+        "priority_score": 1-10,
         "user_segment": "solo_practitioner|small_firm|mid_market|large_firm|in_house|consumer|not_applicable",
         "competitors_mentioned": ["Harvey", "Casetext", "Lexis+", "Westlaw"],
         "supio_mentioned": true|false,

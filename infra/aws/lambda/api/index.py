@@ -9,6 +9,7 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, Any
 from decimal import Decimal
+from urllib.parse import unquote
 
 # Initialize AWS clients
 sfn = boto3.client('stepfunctions')
@@ -69,7 +70,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         http_method = event.get('httpMethod', 'GET')
         path = event.get('path', '/')
-
+        print(f"Debug: Received event: {json.dumps(event)}")
         # CORS headers for cross-origin requests
         headers = {
             'Content-Type': 'application/json',
@@ -351,7 +352,7 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
                     continue
 
             filtered_items.append({
-                'insight_id': f"{item['PK']}#{item['SK']}",
+                'insight_id': f"{item['PK']}-{item['SK']}".replace('#', '-'),
                 'post_id': item['post_id'],
                 'priority_score': item['priority_score'],
                 'feature_summary': item.get('feature_summary', ''),
@@ -389,30 +390,117 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
 def handle_get_insight(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
     """Handle GET /insights/{insightId} - Get single insight details"""
     try:
-        # Extract insight ID from path
-        insight_id = event['path'].split('/')[-1]
+        # Extract insight ID from pathParameters first, then fallback to path
+        path_params = event.get('pathParameters') or {}
+        if 'insightId' in path_params:
+            insight_id = unquote(path_params['insightId'])
+        else:
+            insight_id = unquote(event['path'].split('/')[-1])
 
-        # Parse insight ID format: INSIGHT#{date}#PRIORITY#{score}#ID#{post_id}
-        if '#' not in insight_id:
-            return create_response(400, {'error': 'Invalid insight ID format'}, headers)
+        print(f"Debug: Raw pathParameters: {path_params}")
+        print(f"Debug: Raw path: {event.get('path', '')}")
+        print(f"Debug: Fetching insight ID: {insight_id}")
 
-        parts = insight_id.split('#')
-        if len(parts) < 6:
-            return create_response(400, {'error': 'Invalid insight ID format'}, headers)
+        # Parse insight ID format - handle both old (#) and new (-) formats
+        # New format: INSIGHT-{date}-PRIORITY-{score}-ID-{post_id}
+        # Old format: INSIGHT#{date}#PRIORITY#{score}#ID#{post_id}
 
-        pk = f"{parts[0]}#{parts[1]}"  # INSIGHT#{date}
-        sk = f"{parts[2]}#{parts[3]}#{parts[4]}#{parts[5]}"  # PRIORITY#{score}#ID#{post_id}
+        if '#' in insight_id:
+            # Old format from existing URLs - convert to new format internally
+            parts = insight_id.split('#')
+            if len(parts) != 6:
+                return create_response(400, {
+                    'error': 'Invalid insight ID format',
+                    'debug': {
+                        'received_insight_id': insight_id,
+                        'parts_count': len(parts),
+                        'parts': parts,
+                        'expected_format': 'INSIGHT#{date}#PRIORITY#{score}#ID#{post_id} or INSIGHT-{date}-PRIORITY-{score}-ID-{post_id}'
+                    }
+                }, headers)
+            # Query DynamoDB with old format (existing data uses # internally)
+            pk = f"{parts[0]}#{parts[1]}"  # INSIGHT#{date}
+            sk = f"{parts[2]}#{parts[3]}#{parts[4]}#{parts[5]}"  # PRIORITY#{score}#ID#{post_id}
+        else:
+            # New format: INSIGHT-YYYY-MM-DD-PRIORITY-{score}-ID-{post_id}
+            # Split on '-' but handle the date format properly
+            if not insight_id.startswith('INSIGHT-'):
+                return create_response(400, {
+                    'error': 'Invalid insight ID format',
+                    'debug': {
+                        'received_insight_id': insight_id,
+                        'expected_format': 'INSIGHT-{date}-PRIORITY-{score}-ID-{post_id}'
+                    }
+                }, headers)
+
+            # Parse the format more carefully
+            # Expected: INSIGHT-YYYY-MM-DD-PRIORITY-{score}-ID-{post_id}
+            parts = insight_id.split('-')
+            if len(parts) < 8:  # INSIGHT, YYYY, MM, DD, PRIORITY, {score}, ID, {post_id} = 8 parts minimum
+                return create_response(400, {
+                    'error': 'Invalid insight ID format',
+                    'debug': {
+                        'received_insight_id': insight_id,
+                        'parts_count': len(parts),
+                        'parts': parts,
+                        'expected_format': 'INSIGHT-YYYY-MM-DD-PRIORITY-{score}-ID-{post_id}'
+                    }
+                }, headers)
+
+            # Reconstruct the components
+            # parts[0] = 'INSIGHT'
+            # parts[1] = 'YYYY'
+            # parts[2] = 'MM'
+            # parts[3] = 'DD'
+            # parts[4] = 'PRIORITY'
+            # parts[5] = '{score}'
+            # parts[6] = 'ID'
+            # parts[7] = '{post_id}'
+
+            if parts[0] != 'INSIGHT' or parts[4] != 'PRIORITY' or parts[6] != 'ID':
+                return create_response(400, {
+                    'error': 'Invalid insight ID format',
+                    'debug': {
+                        'received_insight_id': insight_id,
+                        'parts': parts,
+                        'expected_format': 'INSIGHT-YYYY-MM-DD-PRIORITY-{score}-ID-{post_id}'
+                    }
+                }, headers)
+
+            # For new format, construct keys properly
+            # Reconstruct date from parts[1], parts[2], parts[3]
+            date_part = f"{parts[1]}-{parts[2]}-{parts[3]}"  # YYYY-MM-DD
+            pk = f"{parts[0]}-{date_part}"  # INSIGHT-YYYY-MM-DD
+            sk = f"{parts[4]}-{parts[5]}-{parts[6]}-{parts[7]}"  # PRIORITY-{score}-ID-{post_id}
 
         # Get DynamoDB table
         table = dynamodb.Table(os.environ.get('INSIGHTS_TABLE_NAME', 'supio-insights'))
 
-        # Get item
-        response = table.get_item(
-            Key={
-                'PK': pk,
-                'SK': sk
-            }
-        )
+        # Get item - try both formats for backward compatibility
+        try:
+            response = table.get_item(
+                Key={
+                    'PK': pk,
+                    'SK': sk
+                }
+            )
+
+            # If not found and we tried new format, fall back to old format
+            if 'Item' not in response and '#' not in insight_id:
+                # Try old format as fallback - reconstruct with # separators
+                old_date_part = f"{parts[1]}-{parts[2]}-{parts[3]}"  # Keep date as YYYY-MM-DD
+                old_pk = f"{parts[0]}#{old_date_part}"  # INSIGHT#YYYY-MM-DD
+                old_sk = f"{parts[4]}#{parts[5]}#{parts[6]}#{parts[7]}"  # PRIORITY#{score}#ID#{post_id}
+                response = table.get_item(
+                    Key={
+                        'PK': old_pk,
+                        'SK': old_sk
+                    }
+                )
+
+        except Exception as e:
+            print(f"Error querying DynamoDB: {str(e)}")
+            return create_response(500, {'error': 'Database error'}, headers)
 
         if 'Item' not in response:
             return create_response(404, {'error': 'Insight not found'}, headers)
@@ -421,7 +509,7 @@ def handle_get_insight(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[s
 
         # Return detailed insight
         insight_detail = {
-            'insight_id': insight_id,
+            'insight_id': f"{item['PK']}-{item['SK']}".replace('#', '-'),
             'post_id': item['post_id'],
             'post_url': item.get('post_url', ''),
             'subreddit': item.get('subreddit', ''),
@@ -564,7 +652,7 @@ def handle_analytics_summary(event: Dict[str, Any], headers: Dict[str, str]) -> 
         # Recent high priority insights (for alerts)
         recent_high_priority = [
             {
-                'insight_id': f"{item['PK']}#{item['SK']}",
+                'insight_id': f"{item['PK']}-{item['SK']}".replace('#', '-'),
                 'priority_score': item.get('priority_score', 0),
                 'feature_summary': item.get('feature_summary', ''),
                 'analyzed_at': item.get('analyzed_at', '')
@@ -862,7 +950,7 @@ def handle_analytics_competitors(event: Dict[str, Any], headers: Dict[str, str])
 
                 # Add insight details
                 insight_detail = {
-                    'insight_id': f"{item['PK']}#{item['SK']}",
+                    'insight_id': f"{item['PK']}-{item['SK']}".replace('#', '-'),
                     'priority_score': item.get('priority_score', 0),
                     'feature_summary': item.get('feature_summary', ''),
                     'competitive_advantage': item.get('competitive_advantage', ''),

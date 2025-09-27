@@ -533,6 +533,7 @@ export interface AppState {
   setPreferences: (preferences: Partial<AppState['preferences']>) => void;
   toggleSidebar: () => void;
   setActiveInsight: (id: string | null) => void;
+  setCurrentView: (view: string) => void;
 }
 
 // API Service Types

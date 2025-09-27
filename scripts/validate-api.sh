@@ -369,9 +369,9 @@ test_insight_details() {
         return 1
     fi
 
-    # Test with properly formatted ID (should return 404 if no data)
+    # Test with properly formatted dash format ID (should return 404 if no data)
     local valid_response
-    valid_response=$(api_request "GET" "/insights/INSIGHT#2025-09-23#PRIORITY#8#ID#test123")
+    valid_response=$(api_request "GET" "/insights/INSIGHT-2025-09-23-PRIORITY-8-ID-test123")
 
     if echo "$valid_response" | jq -e '.error' > /dev/null 2>&1; then
         local error_msg

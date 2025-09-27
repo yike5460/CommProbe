@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useInsights } from '@/hooks/useApi';
+import { useInsights, useInsightDetails } from '@/hooks/useApi';
 import { useAppStore } from '@/stores/appStore';
 import {
   Search,
@@ -39,7 +39,8 @@ import {
   ExternalLink,
   Clock,
   MessageSquare,
-  TrendingUp
+  TrendingUp,
+  Lightbulb
 } from 'lucide-react';
 
 // Constants to avoid recreating objects on each render
@@ -77,6 +78,12 @@ export default function InsightsPage() {
     category: selectedCategory !== 'all' ? selectedCategory as any : undefined,
     user_segment: selectedUserSegment !== 'all' ? selectedUserSegment as any : undefined,
   });
+
+  // Fetch detailed insight data when modal is open
+  const { data: insightDetails, isLoading: insightDetailsLoading } = useInsightDetails(
+    selectedInsight?.insight_id || '',
+    { enabled: !!selectedInsight?.insight_id && isModalOpen }
+  );
 
   // Sort and filter insights
   const allProcessedInsights = useMemo(() => {
@@ -547,9 +554,9 @@ export default function InsightsPage() {
             <DialogTitle className="flex items-center justify-between">
               <span className="flex items-center gap-3">
                 <Badge
-                  className={`${getPriorityColor(selectedInsight?.priority_score || 0)} text-white`}
+                  className={`${getPriorityColor((insightDetails?.data.priority_score || selectedInsight?.priority_score) || 0)} text-white`}
                 >
-                  {getPriorityLabel(selectedInsight?.priority_score || 0)} - {selectedInsight?.priority_score?.toFixed(1)}
+                  {getPriorityLabel((insightDetails?.data.priority_score || selectedInsight?.priority_score) || 0)} - {((insightDetails?.data.priority_score || selectedInsight?.priority_score) || 0).toFixed(1)}
                 </Badge>
                 <span className="text-lg font-semibold">Insight Details</span>
               </span>
@@ -561,176 +568,279 @@ export default function InsightsPage() {
 
           {selectedInsight && (
             <div className="space-y-6 mt-4">
-              {/* Feature Summary */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3 flex items-center">
-                  <MessageSquare className="mr-2 h-5 w-5" />
-                  Feature Summary
-                </h3>
-                <p className="text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg">
-                  {selectedInsight.feature_summary}
-                </p>
-              </div>
-
-              {/* Metadata Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {insightDetailsLoading ? (
                 <div className="space-y-4">
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
-                      <Tag className="mr-2 h-4 w-4" />
-                      Category
-                    </h4>
-                    <Badge variant="outline" className="text-sm">
-                      {selectedInsight.feature_category.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                    </Badge>
-                  </div>
-
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
-                      <Users className="mr-2 h-4 w-4" />
-                      User Segment
-                    </h4>
-                    <Badge variant="outline" className="text-sm">
-                      {selectedInsight.user_segment.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                    </Badge>
-                  </div>
-
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
-                      <TrendingUp className="mr-2 h-4 w-4" />
-                      Priority Score
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${getPriorityColor(selectedInsight.priority_score)}`}></div>
-                      <span className="font-medium">{selectedInsight.priority_score.toFixed(1)} / 10.0</span>
-                    </div>
-                  </div>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="h-16 bg-muted rounded animate-pulse" />
+                  ))}
                 </div>
-
-                <div className="space-y-4">
+              ) : (
+                <>
+                  {/* Feature Summary */}
                   <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
-                      <Clock className="mr-2 h-4 w-4" />
-                      Analyzed Date
-                    </h4>
-                    <p className="text-sm">{new Date(selectedInsight.analyzed_at).toLocaleString()}</p>
+                    <h3 className="text-lg font-semibold mb-3 flex items-center">
+                      <MessageSquare className="mr-2 h-5 w-5" />
+                      Feature Summary
+                    </h3>
+                    <p className="text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg">
+                      {insightDetails?.data.feature_summary || selectedInsight.feature_summary}
+                    </p>
                   </div>
 
-                  {selectedInsight.action_required && (
+                  {/* Feature Details */}
+                  {insightDetails?.data.feature_details && (
                     <div>
-                      <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
-                        <AlertTriangle className="mr-2 h-4 w-4" />
-                        Status
-                      </h4>
-                      <Badge variant="outline" className="text-orange-600 border-orange-600">
-                        Action Required
-                      </Badge>
+                      <h3 className="text-lg font-semibold mb-3 flex items-center">
+                        <Lightbulb className="mr-2 h-5 w-5" />
+                        Feature Details
+                      </h3>
+                      <p className="text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg">
+                        {insightDetails.data.feature_details}
+                      </p>
                     </div>
                   )}
 
-                  {selectedInsight.competitors_mentioned && selectedInsight.competitors_mentioned.length > 0 && (
-                    <div>
-                      <h4 className="font-medium text-sm text-muted-foreground mb-2">
-                        Competitors Mentioned
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedInsight.competitors_mentioned.map((competitor: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs">
-                            {competitor}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Source Information */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3 flex items-center">
-                  <ExternalLink className="mr-2 h-5 w-5" />
-                  Source Information
-                </h3>
-                <div className="bg-muted/50 p-4 rounded-lg space-y-3">
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2">Original Source</h4>
-                    {selectedInsight.source_url ? (
-                      <a
-                        href={selectedInsight.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        <span className="mr-2">View on Reddit</span>
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    ) : (
-                      <div className="inline-flex items-center text-muted-foreground">
-                        <span className="mr-2">Reddit URL (Coming Soon)</span>
-                        <Badge variant="outline" className="text-xs">
-                          Pending API Enhancement
+                  {/* Metadata Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                          <Tag className="mr-2 h-4 w-4" />
+                          Category
+                        </h4>
+                        <Badge variant="outline" className="text-sm">
+                          {(insightDetails?.data.feature_category || selectedInsight.feature_category).replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                         </Badge>
                       </div>
-                    )}
+
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                          <Users className="mr-2 h-4 w-4" />
+                          User Segment
+                        </h4>
+                        <Badge variant="outline" className="text-sm">
+                          {(insightDetails?.data.user_segment || selectedInsight.user_segment).replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        </Badge>
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                          <TrendingUp className="mr-2 h-4 w-4" />
+                          Priority Score
+                        </h4>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${getPriorityColor(insightDetails?.data.priority_score || selectedInsight.priority_score)}`}></div>
+                          <span className="font-medium">{(insightDetails?.data.priority_score || selectedInsight.priority_score).toFixed(1)} / 10.0</span>
+                        </div>
+                      </div>
+
+                      {insightDetails?.data.implementation_size && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                            <Target className="mr-2 h-4 w-4" />
+                            Implementation Size
+                          </h4>
+                          <Badge variant="outline" className="text-sm capitalize">
+                            {insightDetails.data.implementation_size}
+                          </Badge>
+                        </div>
+                      )}
+
+                      {insightDetails?.data.ai_readiness && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                            <Lightbulb className="mr-2 h-4 w-4" />
+                            AI Readiness
+                          </h4>
+                          <Badge variant="outline" className="text-sm capitalize">
+                            {insightDetails.data.ai_readiness}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                          <Clock className="mr-2 h-4 w-4" />
+                          Analyzed Date
+                        </h4>
+                        <p className="text-sm">{new Date(insightDetails?.data.analyzed_at || selectedInsight.analyzed_at).toLocaleString()}</p>
+                      </div>
+
+                      {(insightDetails?.data.action_required || selectedInsight.action_required) && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                            <AlertTriangle className="mr-2 h-4 w-4" />
+                            Status
+                          </h4>
+                          <Badge variant="outline" className="text-orange-600 border-orange-600">
+                            Action Required
+                          </Badge>
+                        </div>
+                      )}
+
+                      {insightDetails?.data.post_score && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                            <TrendingUp className="mr-2 h-4 w-4" />
+                            Post Score
+                          </h4>
+                          <span className="text-sm font-medium">{insightDetails.data.post_score} points</span>
+                        </div>
+                      )}
+
+                      {insightDetails?.data.num_comments && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                            <MessageSquare className="mr-2 h-4 w-4" />
+                            Comments
+                          </h4>
+                          <span className="text-sm font-medium">{insightDetails.data.num_comments} comments</span>
+                        </div>
+                      )}
+
+                      {(insightDetails?.data.competitors_mentioned || selectedInsight.competitors_mentioned)?.length > 0 && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">
+                            Competitors Mentioned
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {(insightDetails?.data.competitors_mentioned || selectedInsight.competitors_mentioned).map((competitor: string, index: number) => (
+                              <Badge key={index} variant="secondary" className="text-xs">
+                                {competitor}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Source Information */}
                   <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2">Post Title</h4>
-                    {selectedInsight.source_title ? (
-                      <p className="text-sm italic">{selectedInsight.source_title}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground italic">
-                        Original post title (Will be available when API is enhanced)
+                    <h3 className="text-lg font-semibold mb-3 flex items-center">
+                      <ExternalLink className="mr-2 h-5 w-5" />
+                      Source Information
+                    </h3>
+                    <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Original Source</h4>
+                        {insightDetails?.data.post_url ? (
+                          <a
+                            href={insightDetails.data.post_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors"
+                          >
+                            <span className="mr-2">View on Reddit</span>
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <div className="inline-flex items-center text-muted-foreground">
+                            <span className="mr-2">Reddit URL Loading...</span>
+                            <Badge variant="outline" className="text-xs">
+                              Loading Details
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Subreddit</h4>
+                        <Badge variant="secondary" className="text-sm">
+                          r/{insightDetails?.data.subreddit || selectedInsight.subreddit}
+                        </Badge>
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Discussion Context</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Sourced from Reddit legal technology discussions in r/{insightDetails?.data.subreddit || selectedInsight.subreddit}
+                        </p>
+                      </div>
+
+                      {insightDetails?.data.collected_at && (
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Collected Date</h4>
+                          <p className="text-sm">{new Date(insightDetails.data.collected_at).toLocaleString()}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Competitive Analysis */}
+                  {insightDetails?.data.competitive_advantage && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3 flex items-center">
+                        <Target className="mr-2 h-5 w-5" />
+                        Competitive Advantage
+                      </h3>
+                      <p className="text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg">
+                        {insightDetails.data.competitive_advantage}
                       </p>
+                    </div>
+                  )}
+
+                  {/* Suggested Action */}
+                  {insightDetails?.data.suggested_action && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3 flex items-center">
+                        <AlertTriangle className="mr-2 h-5 w-5" />
+                        Suggested Action
+                      </h3>
+                      <p className="text-foreground leading-relaxed bg-muted/50 p-4 rounded-lg">
+                        {insightDetails.data.suggested_action}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Pain Points */}
+                  {insightDetails?.data.pain_points && insightDetails.data.pain_points.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3 flex items-center">
+                        <AlertTriangle className="mr-2 h-5 w-5" />
+                        Pain Points
+                      </h3>
+                      <div className="bg-muted/50 p-4 rounded-lg">
+                        <ul className="space-y-2">
+                          {insightDetails.data.pain_points.map((point: string, index: number) => (
+                            <li key={index} className="flex items-start space-x-2">
+                              <span className="text-muted-foreground mt-1">•</span>
+                              <span className="text-foreground">{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    <Button variant="outline" onClick={handleCloseModal}>
+                      Close
+                    </Button>
+                    {insightDetails?.data.post_url ? (
+                      <Button
+                        onClick={() => window.open(insightDetails.data.post_url, '_blank')}
+                        className="flex items-center"
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        View Source
+                      </Button>
+                    ) : (
+                      <Button
+                        disabled={insightDetailsLoading}
+                        className="flex items-center"
+                        title={insightDetailsLoading ? "Loading source URL..." : "Source URL not available"}
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        {insightDetailsLoading ? 'Loading...' : 'View Source'}
+                      </Button>
                     )}
                   </div>
-
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-2">Discussion Context</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Sourced from Reddit legal technology discussions in subreddits like r/LawFirm, r/Lawyertalk, and r/legaltech
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Raw Content (if available) */}
-              {selectedInsight.raw_content && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">Original Content</h3>
-                  <div className="bg-muted/30 p-4 rounded-lg border-l-4 border-blue-500">
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                      {selectedInsight.raw_content.substring(0, 500)}
-                      {selectedInsight.raw_content.length > 500 && '...'}
-                    </p>
-                  </div>
-                </div>
+                </>
               )}
-
-              {/* Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={handleCloseModal}>
-                  Close
-                </Button>
-                {selectedInsight.source_url ? (
-                  <Button
-                    onClick={() => window.open(selectedInsight.source_url, '_blank')}
-                    className="flex items-center"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    View Source
-                  </Button>
-                ) : (
-                  <Button
-                    disabled
-                    className="flex items-center"
-                    title="Source URL will be available when API is enhanced"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    View Source (Coming Soon)
-                  </Button>
-                )}
-              </div>
             </div>
           )}
         </DialogContent>
