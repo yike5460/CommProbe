@@ -1,0 +1,3 @@
+- Please use command "npx cdk deploy \
+     --context redditClientId=iPH6UMuXs_0pFWYBHi8gOg \
+     --context redditClientSecret=K6LYsuo4BTkP_ILb2GpE_45dBQ6PqA" for the CDK stack deployment
