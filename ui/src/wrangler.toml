@@ -1,0 +1,21 @@
+name = "legal-frontend"
+compatibility_date = "2023-12-13"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = """
+cd ui/src && \
+yarn install && \
+yarn build
+"""
+
+[site]
+bucket = ".vercel/output/static"
+
+[env.production]
+routes = [
+  { pattern = "/*", zone_name = "commprobe.pages.dev" }
+]
+
+[build.upload]
+format = "service-worker"
