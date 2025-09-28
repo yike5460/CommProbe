@@ -47,6 +47,7 @@ env/
 !package.json
 !package-lock.json
 !tsconfig.json
+!components.json
 reddit_crawl_*.json
 reddit_crawl_record.json
 reddit_rate_limit.json
