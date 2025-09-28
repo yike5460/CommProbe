@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY!;
 
+// Export runtime config for Cloudflare
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -70,28 +74,41 @@ async function handleRequest(
       }
     }
 
-    // Make the API request
-    const response = await fetch(url.toString(), requestOptions);
+    // Make the API request with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-    // Get response data
-    let data;
-    const contentType = response.headers.get('content-type');
+    try {
+      const response = await fetch(url.toString(), {
+        ...requestOptions,
+        signal: controller.signal,
+      });
 
-    if (contentType && contentType.includes('application/json')) {
-      data = await response.json();
-    } else {
-      data = await response.text();
+      clearTimeout(timeoutId);
+
+      // Get response data
+      let data;
+      const contentType = response.headers.get('content-type');
+
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+
+      // Return response with CORS headers
+      return NextResponse.json(data, {
+        status: response.status,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+      });
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    // Return response with CORS headers
-    return NextResponse.json(data, {
-      status: response.status,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
-      },
-    });
 
   } catch (error) {
     console.error('Proxy error:', error);
@@ -120,6 +137,7 @@ export async function OPTIONS() {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Max-Age': '86400',
     },
   });
 }
