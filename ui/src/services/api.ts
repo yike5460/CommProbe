@@ -55,19 +55,16 @@ export class SupioApiService {
     this.isDevelopment = process.env.NODE_ENV === 'development';
     this.apiKey = process.env.NEXT_PUBLIC_API_KEY!;
 
-    // Use proxy endpoint for development to avoid CORS issues
-    if (this.isDevelopment) {
-      this.baseUrl = '/api/proxy';
-    } else {
-      this.baseUrl = process.env.NEXT_PUBLIC_API_URL!;
-    }
+    // Always use proxy endpoint to avoid CORS issues
+    // The proxy handles the actual API calls to AWS
+    this.baseUrl = '/api/proxy';
 
     if (!this.apiKey) {
       throw new Error('API configuration missing. Please check environment variables.');
     }
 
-    if (!this.isDevelopment && !process.env.NEXT_PUBLIC_API_URL) {
-      throw new Error('NEXT_PUBLIC_API_URL is required for production.');
+    if (!process.env.NEXT_PUBLIC_API_URL) {
+      throw new Error('NEXT_PUBLIC_API_URL is required for the proxy to work.');
     }
   }
 
@@ -75,17 +72,10 @@ export class SupioApiService {
    * Generic request method with error handling
    */
   private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    let url: URL;
-
-    if (this.isDevelopment) {
-      // For development, use proxy endpoint with path as URL segments
-      // Remove leading slash from endpoint for proper path construction
-      const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
-      url = new URL(`${this.baseUrl}/${cleanEndpoint}`, window.location.origin);
-    } else {
-      // For production, use direct API URL
-      url = new URL(endpoint, this.baseUrl);
-    }
+    // Always use proxy endpoint with path as URL segments
+    // Remove leading slash from endpoint for proper path construction
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+    const url = new URL(`${this.baseUrl}/${cleanEndpoint}`, window.location.origin);
 
     // Add query parameters
     if (options.params) {
@@ -102,10 +92,7 @@ export class SupioApiService {
         ...options.headers,
       };
 
-      // Only add API key for production - proxy handles it in development
-      if (!this.isDevelopment) {
-        headers['X-API-Key'] = this.apiKey;
-      }
+      // The proxy handles API key authentication - no need to add it here
 
       const response = await fetch(url.toString(), {
         method: options.method || 'GET',
