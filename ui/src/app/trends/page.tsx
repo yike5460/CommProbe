@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAnalyticsTrends } from '@/hooks/useApi';
+import { TrendPoint, TrendsResponse } from '@/types';
 import {
   TrendingUp,
   TrendingDown,
@@ -36,7 +37,7 @@ export default function TrendsPage() {
     metric,
     period,
     group_by: groupBy
-  });
+  }) as { data: TrendsResponse | undefined; isLoading: boolean };
 
   const getTrendIcon = (direction: string) => {
     if (direction === 'increasing') return <TrendingUp className="h-4 w-4 text-green-500" />;
@@ -75,15 +76,15 @@ export default function TrendsPage() {
       </div>
 
       {/* Controls */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <Card className="mb-6 bg-gradient-to-r from-background to-muted/20 border-0 shadow-md">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Metric Selection */}
-            <div>
-              <label className="text-sm font-medium mb-2 block">Metric</label>
+            <div className="flex items-center gap-2 bg-background/30 backdrop-blur-sm rounded-lg px-3 border h-10">
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
               <Select value={metric} onValueChange={(value: any) => setMetric(value)}>
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="border-0 bg-transparent p-0 h-auto focus:ring-0 min-w-[130px]">
+                  <SelectValue placeholder="Metric" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="insights_count">Insights Count</SelectItem>
@@ -94,11 +95,11 @@ export default function TrendsPage() {
             </div>
 
             {/* Period Selection */}
-            <div>
-              <label className="text-sm font-medium mb-2 block">Period</label>
+            <div className="flex items-center gap-2 bg-background/30 backdrop-blur-sm rounded-lg px-3 border h-10">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
               <Select value={period} onValueChange={(value: any) => setPeriod(value)}>
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="border-0 bg-transparent p-0 h-auto focus:ring-0 min-w-[110px]">
+                  <SelectValue placeholder="Period" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="7d">Last 7 days</SelectItem>
@@ -109,11 +110,11 @@ export default function TrendsPage() {
             </div>
 
             {/* Group By Selection */}
-            <div>
-              <label className="text-sm font-medium mb-2 block">Group By</label>
+            <div className="flex items-center gap-2 bg-background/30 backdrop-blur-sm rounded-lg px-3 border h-10">
+              <Activity className="h-4 w-4 text-muted-foreground" />
               <Select value={groupBy} onValueChange={(value: any) => setGroupBy(value)}>
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="border-0 bg-transparent p-0 h-auto focus:ring-0 min-w-[90px]">
+                  <SelectValue placeholder="Group By" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="day">Daily</SelectItem>
@@ -124,11 +125,11 @@ export default function TrendsPage() {
             </div>
 
             {/* Chart Type */}
-            <div>
-              <label className="text-sm font-medium mb-2 block">Chart Type</label>
+            <div className="flex items-center gap-2 bg-background/30 backdrop-blur-sm rounded-lg px-3 border h-10">
+              <LineChart className="h-4 w-4 text-muted-foreground" />
               <Select defaultValue="line">
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="border-0 bg-transparent p-0 h-auto focus:ring-0 min-w-[100px]">
+                  <SelectValue placeholder="Chart Type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="line">Line Chart</SelectItem>
@@ -274,7 +275,7 @@ export default function TrendsPage() {
             </div>
           ) : trendsData?.data.trend_points?.length ? (
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {trendsData.data.trend_points.slice(0, 20).map((point, index) => (
+              {trendsData.data.trend_points.slice(0, 20).map((point: TrendPoint, index: number) => (
                 <div key={index} className="flex items-center justify-between p-3 rounded border">
                   <div className="flex items-center space-x-3">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
