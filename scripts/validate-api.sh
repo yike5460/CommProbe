@@ -11,6 +11,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -h, --help              Show this help message"
+    echo "  -r, --region REGION     AWS region (default: us-west-2)"
     echo "  -p, --pipeline-only     Test only pipeline endpoints (original tests)"
     echo "  -d, --data-only         Test only data access endpoints (Priority 1)"
     echo "  -q, --quick             Skip pipeline execution tests (faster)"
@@ -26,17 +27,14 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0                      # Run all tests (default)"
+    echo "  $0 --region us-east-1   # Run tests against us-east-1 region"
     echo "  $0 --pipeline-only      # Test only original pipeline functionality"
     echo "  $0 --data-only          # Test only new data access endpoints"
     echo "  $0 --quick              # Skip long-running pipeline execution test"
     exit 0
 }
 
-# Configuration
-API_BASE_URL="https://6bsn9muwfi.execute-api.us-west-2.amazonaws.com/v1"
-API_KEY="vPJlvaa0DS9tqxH41eNIA20Sofzb0cG719d8dd0i"
-S3_BUCKET="supio-raw-data-705247044519-us-west-2"
-DYNAMODB_TABLE="supio-insights"
+# Default Configuration (can be overridden by region parameter)
 AWS_REGION="us-west-2"
 TIMEOUT_SECONDS=180
 
@@ -52,6 +50,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
             usage
+            ;;
+        -r|--region)
+            AWS_REGION="$2"
+            shift 2
             ;;
         -p|--pipeline-only)
             PIPELINE_ONLY=true
@@ -79,6 +81,27 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Set region-specific configuration after parsing arguments
+case $AWS_REGION in
+    us-west-2)
+        API_BASE_URL="https://6bsn9muwfi.execute-api.us-west-2.amazonaws.com/v1"
+        API_KEY="vPJlvaa0DS9tqxH41eNIA20Sofzb0cG719d8dd0i"
+        S3_BUCKET="supio-raw-data-705247044519-us-west-2"
+        ;;
+    us-east-1)
+        # Add us-east-1 configuration when deployed there
+        echo "Error: us-east-1 configuration not yet set up"
+        exit 1
+        ;;
+    *)
+        echo "Error: Unsupported region: $AWS_REGION"
+        echo "Supported regions: us-west-2, us-east-1"
+        exit 1
+        ;;
+esac
+
+DYNAMODB_TABLE="supio-insights"
 
 # Colors for output
 RED='\033[0;31m'
@@ -800,6 +823,8 @@ generate_report() {
 # Main execution
 main() {
     echo "Starting Reddit Crawler API validation..."
+    echo "Region: $AWS_REGION"
+    echo "API Base URL: $API_BASE_URL"
 
     # Show test mode
     if [ "$PIPELINE_ONLY" = true ]; then

@@ -54,7 +54,7 @@ export const useApiDocumentation = () => {
     queryKey: queryKeys.apiDocs,
     queryFn: () => apiService.getApiDocumentation(),
     staleTime: 5 * 60 * 1000, // 5 minutes
-    cacheTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
     meta: {
       errorMessage: 'Failed to load API documentation',
     },
@@ -128,8 +128,8 @@ export const useInsights = (params?: InsightsListParams) => {
     queryKey: queryKeys.insights(params),
     queryFn: () => apiService.getInsights(params),
     staleTime: 2 * 60 * 1000, // 2 minutes
-    cacheTime: 5 * 60 * 1000, // 5 minutes
-    keepPreviousData: true, // Keep previous data while loading new filters
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: (previousData) => previousData, // Keep previous data while loading new filters
     meta: {
       errorMessage: 'Failed to load insights',
     },
@@ -162,8 +162,9 @@ export const useAnalyticsSummary = (params?: AnalyticsParams) => {
   return useQuery({
     queryKey: queryKeys.analyticsSummary(params),
     queryFn: () => apiService.getAnalyticsSummary(params),
-    staleTime: 15 * 60 * 1000, // 15 minutes for analytics
-    cacheTime: 30 * 60 * 1000, // 30 minutes
+    staleTime: 30 * 1000, // 30 seconds - keep dashboard metrics fresh
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 60 * 1000, // Auto-refresh every 60 seconds
     meta: {
       errorMessage: 'Failed to load analytics summary',
     },
@@ -178,7 +179,7 @@ export const useAnalyticsTrends = (params?: TrendsParams) => {
     queryKey: queryKeys.analyticsTrends(params),
     queryFn: () => apiService.getAnalyticsTrends(params),
     staleTime: 15 * 60 * 1000, // 15 minutes
-    cacheTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
     meta: {
       errorMessage: 'Failed to load analytics trends',
     },
@@ -193,7 +194,7 @@ export const useCompetitorAnalysis = (params?: CompetitorParams) => {
     queryKey: queryKeys.analyticsCompetitors(params),
     queryFn: () => apiService.getCompetitorAnalysis(params),
     staleTime: 15 * 60 * 1000, // 15 minutes
-    cacheTime: 30 * 60 * 1000, // 30 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
     meta: {
       errorMessage: 'Failed to load competitor analysis',
     },
@@ -212,7 +213,7 @@ export const useSystemConfiguration = () => {
     queryKey: queryKeys.systemConfig,
     queryFn: () => apiService.getSystemConfiguration(),
     staleTime: 10 * 60 * 1000, // 10 minutes
-    cacheTime: 20 * 60 * 1000, // 20 minutes
+    gcTime: 20 * 60 * 1000, // 20 minutes
     meta: {
       errorMessage: 'Failed to load system configuration',
     },

@@ -345,7 +345,16 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
 
             # Date filtering
             if date_from or date_to:
-                item_date = item.get('GSI1SK', '').split('#DATE#')[-1]
+                # GSI1SK format: SCORE-{score}-DATE-{date}
+                gsi1sk = item.get('GSI1SK', '')
+                if '-DATE-' in gsi1sk:
+                    item_date = gsi1sk.split('-DATE-')[-1]
+                else:
+                    # Fallback for old format if any exists
+                    item_date = gsi1sk.split('#DATE#')[-1] if '#DATE#' in gsi1sk else ''
+
+                if not item_date:
+                    continue
                 if date_from and item_date < date_from:
                     continue
                 if date_to and item_date > date_to:
@@ -586,8 +595,15 @@ def handle_analytics_summary(event: Dict[str, Any], headers: Dict[str, str]) -> 
         # Filter by date range
         filtered_items = []
         for item in items:
-            item_date = item.get('GSI1SK', '').split('#DATE#')[-1]
-            if start_date_str <= item_date <= end_date_str:
+            # GSI1SK format: SCORE-{score}-DATE-{date}
+            gsi1sk = item.get('GSI1SK', '')
+            if '-DATE-' in gsi1sk:
+                item_date = gsi1sk.split('-DATE-')[-1]
+            else:
+                # Fallback for old format if any exists
+                item_date = gsi1sk.split('#DATE#')[-1] if '#DATE#' in gsi1sk else ''
+
+            if item_date and start_date_str <= item_date <= end_date_str:
                 filtered_items.append(item)
 
         # Calculate analytics
@@ -829,10 +845,18 @@ def handle_analytics_trends(event: Dict[str, Any], headers: Dict[str, str]) -> D
             end_interval_str = end_interval.strftime('%Y-%m-%d')
 
             # Filter items for this interval
-            interval_items = [
-                item for item in items
-                if current_date_str <= item.get('GSI1SK', '').split('#DATE#')[-1] < end_interval_str
-            ]
+            # GSI1SK format: SCORE-{score}-DATE-{date}
+            interval_items = []
+            for item in items:
+                gsi1sk = item.get('GSI1SK', '')
+                if '-DATE-' in gsi1sk:
+                    item_date = gsi1sk.split('-DATE-')[-1]
+                else:
+                    # Fallback for old format if any exists
+                    item_date = gsi1sk.split('#DATE#')[-1] if '#DATE#' in gsi1sk else ''
+
+                if item_date and current_date_str <= item_date < end_interval_str:
+                    interval_items.append(item)
 
             # Calculate metrics
             if metric == 'priority_score':

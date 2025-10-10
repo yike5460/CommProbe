@@ -301,6 +301,194 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /analytics/trends:
+    get:
+      summary: Analytics Trends Analysis
+      description: |
+        Get historical trend analysis for insights over time.
+        Supports multiple metrics, time periods, and grouping options for trend visualization.
+      operationId: getAnalyticsTrends
+      tags:
+        - Analytics
+      parameters:
+        - name: metric
+          in: query
+          required: false
+          description: Metric to analyze trends for
+          schema:
+            type: string
+            enum: [priority_score, insights_count, avg_score]
+            default: priority_score
+        - name: period
+          in: query
+          required: false
+          description: Time period for trend analysis
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+        - name: group_by
+          in: query
+          required: false
+          description: Time interval grouping
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        '200':
+          description: Trends analysis retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendsAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /analytics/competitors:
+    get:
+      summary: Competitor Intelligence Analysis
+      description: |
+        Get competitive intelligence analysis including competitor mentions,
+        sentiment analysis, and market positioning insights.
+      operationId: getCompetitorAnalysis
+      tags:
+        - Analytics
+      parameters:
+        - name: competitor
+          in: query
+          required: false
+          description: Filter by specific competitor name
+          schema:
+            type: string
+        - name: sentiment
+          in: query
+          required: false
+          description: Filter by sentiment
+          schema:
+            type: string
+            enum: [positive, negative, neutral]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of competitors to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Competitor analysis retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompetitorAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /executions/{executionName}:
+    delete:
+      summary: Cancel Running Execution
+      description: |
+        Cancel a currently running pipeline execution.
+        Returns error if execution is already in terminal state (SUCCEEDED, FAILED, etc.).
+      operationId: cancelExecution
+      tags:
+        - Job Management
+      parameters:
+        - name: executionName
+          in: path
+          required: true
+          description: The unique execution name to cancel
+          schema:
+            type: string
+            pattern: '^manual-[0-9]{8}-[0-9]{6}-[a-f0-9]{8}$'
+            example: manual-20250923-021621-e5cff012
+      responses:
+        '200':
+          description: Execution cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelExecutionResponse'
+        '404':
+          description: Execution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Cannot cancel execution in terminal state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /logs/{executionName}:
+    get:
+      summary: Get Execution Logs
+      description: |
+        Retrieve detailed execution logs for a specific pipeline run.
+        Includes Step Functions events, Lambda executions, and error details.
+      operationId: getExecutionLogs
+      tags:
+        - Job Management
+      parameters:
+        - name: executionName
+          in: path
+          required: true
+          description: The unique execution name to get logs for
+          schema:
+            type: string
+            pattern: '^manual-[0-9]{8}-[0-9]{6}-[a-f0-9]{8}$'
+            example: manual-20250923-021621-e5cff012
+        - name: level
+          in: query
+          required: false
+          description: Filter logs by level
+          schema:
+            type: string
+            enum: [ALL, DEBUG, INFO, WARN, ERROR]
+            default: INFO
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of log entries to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: start_time
+          in: query
+          required: false
+          description: Filter logs after this timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Execution logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionLogsResponse'
+        '404':
+          description: Execution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /config:
     get:
       summary: Get System Configuration
@@ -975,6 +1163,396 @@ components:
               priority_score: 9
               feature_summary: "AI-powered deposition analysis"
               analyzed_at: "2025-09-23T15:30:00"
+
+    TrendsAnalysisResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: object
+          required:
+            - metric
+            - period
+            - group_by
+            - date_range
+            - trend_points
+            - summary
+          properties:
+            metric:
+              type: string
+              enum: [priority_score, insights_count, avg_score]
+              example: "insights_count"
+            period:
+              type: string
+              enum: [7d, 30d, 90d]
+              example: "30d"
+            group_by:
+              type: string
+              enum: [day, week, month]
+              example: "day"
+            date_range:
+              type: object
+              required:
+                - start
+                - end
+              properties:
+                start:
+                  type: string
+                  format: date
+                  example: "2025-08-24"
+                end:
+                  type: string
+                  format: date
+                  example: "2025-09-23"
+            trend_points:
+              type: array
+              items:
+                type: object
+                required:
+                  - date
+                  - value
+                  - count
+                properties:
+                  date:
+                    type: string
+                    format: date
+                    example: "2025-09-23"
+                  value:
+                    type: number
+                    format: float
+                    description: Metric value for this data point
+                    example: 15
+                  count:
+                    type: integer
+                    description: Number of insights in this period
+                    example: 15
+            summary:
+              type: object
+              required:
+                - trend_direction
+                - volatility
+                - total_data_points
+                - avg_value
+              properties:
+                trend_direction:
+                  type: string
+                  enum: [increasing, decreasing, stable]
+                  description: Overall trend direction
+                  example: "increasing"
+                volatility:
+                  type: number
+                  format: float
+                  description: Measure of trend variance
+                  example: 8.5
+                total_data_points:
+                  type: integer
+                  example: 30
+                avg_value:
+                  type: number
+                  format: float
+                  example: 12.3
+        meta:
+          type: object
+          required:
+            - generated_at
+            - total_insights_analyzed
+          properties:
+            generated_at:
+              type: string
+              format: date-time
+              example: "2025-09-23T17:45:00.000Z"
+            total_insights_analyzed:
+              type: integer
+              example: 170
+
+    CompetitorAnalysisResponse:
+      type: object
+      required:
+        - data
+        - filters
+        - meta
+      properties:
+        data:
+          type: object
+          required:
+            - competitors
+            - market_analysis
+          properties:
+            competitors:
+              type: array
+              items:
+                type: object
+                required:
+                  - name
+                  - total_mentions
+                  - avg_priority
+                  - categories
+                  - user_segments
+                  - sentiment_breakdown
+                  - insights
+                properties:
+                  name:
+                    type: string
+                    example: "Harvey"
+                  total_mentions:
+                    type: integer
+                    description: Number of times this competitor was mentioned
+                    example: 15
+                  avg_priority:
+                    type: number
+                    format: float
+                    description: Average priority score of insights mentioning this competitor
+                    example: 7.8
+                  categories:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                    description: Breakdown of mentions by category
+                    example:
+                      document_automation: 8
+                      ai_integration: 7
+                  user_segments:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                    description: Breakdown of mentions by user segment
+                    example:
+                      large_law_firm: 10
+                      mid_size_firm: 5
+                  sentiment_breakdown:
+                    type: object
+                    required:
+                      - positive
+                      - negative
+                      - neutral
+                    properties:
+                      positive:
+                        type: integer
+                        example: 8
+                      negative:
+                        type: integer
+                        example: 2
+                      neutral:
+                        type: integer
+                        example: 5
+                  insights:
+                    type: array
+                    description: Sample insights mentioning this competitor
+                    items:
+                      type: object
+                      required:
+                        - insight_id
+                        - priority_score
+                        - feature_summary
+                        - competitive_advantage
+                        - analyzed_at
+                        - subreddit
+                      properties:
+                        insight_id:
+                          type: string
+                        priority_score:
+                          type: integer
+                        feature_summary:
+                          type: string
+                        competitive_advantage:
+                          type: string
+                        analyzed_at:
+                          type: string
+                          format: date-time
+                        subreddit:
+                          type: string
+            market_analysis:
+              type: object
+              required:
+                - market_leader
+                - total_competitors_mentioned
+                - avg_mentions_per_competitor
+                - most_discussed_categories
+              properties:
+                market_leader:
+                  type: string
+                  nullable: true
+                  description: Competitor with most mentions
+                  example: "Harvey"
+                total_competitors_mentioned:
+                  type: integer
+                  example: 8
+                avg_mentions_per_competitor:
+                  type: number
+                  format: float
+                  example: 6.5
+                most_discussed_categories:
+                  type: object
+                  additionalProperties:
+                    type: integer
+                  description: Top 5 categories where competitors are discussed
+                  example:
+                    ai_integration: 25
+                    document_automation: 18
+        filters:
+          type: object
+          properties:
+            competitor:
+              type: string
+              nullable: true
+            sentiment:
+              type: string
+              nullable: true
+            limit:
+              type: integer
+        meta:
+          type: object
+          required:
+            - generated_at
+            - total_insights_analyzed
+          properties:
+            generated_at:
+              type: string
+              format: date-time
+              example: "2025-09-23T17:45:00.000Z"
+            total_insights_analyzed:
+              type: integer
+              example: 170
+
+    CancelExecutionResponse:
+      type: object
+      required:
+        - message
+        - executionArn
+        - executionName
+        - stopDate
+        - previous_status
+        - new_status
+      properties:
+        message:
+          type: string
+          example: "Execution cancellation requested successfully"
+        executionArn:
+          type: string
+          example: "arn:aws:states:us-west-2:705247044519:execution:supio-reddit-insights-pipeline:manual-20250923-021621-e5cff012"
+        executionName:
+          type: string
+          example: "manual-20250923-021621-e5cff012"
+        stopDate:
+          type: string
+          format: date-time
+          description: When the execution was stopped
+          example: "2025-09-23T02:19:48.610000+00:00"
+        previous_status:
+          type: string
+          enum: [RUNNING]
+          description: Status before cancellation
+          example: "RUNNING"
+        new_status:
+          type: string
+          enum: [ABORTED]
+          description: Status after cancellation
+          example: "ABORTED"
+
+    ExecutionLogsResponse:
+      type: object
+      required:
+        - data
+        - filters
+        - meta
+      properties:
+        data:
+          type: object
+          required:
+            - execution_name
+            - execution_arn
+            - execution_status
+            - logs
+            - log_summary
+          properties:
+            execution_name:
+              type: string
+              example: "manual-20250923-021621-e5cff012"
+            execution_arn:
+              type: string
+              example: "arn:aws:states:us-west-2:705247044519:execution:supio-reddit-insights-pipeline:manual-20250923-021621-e5cff012"
+            execution_status:
+              type: string
+              enum: [RUNNING, SUCCEEDED, FAILED, TIMED_OUT, ABORTED]
+              example: "SUCCEEDED"
+            logs:
+              type: array
+              items:
+                type: object
+                required:
+                  - timestamp
+                  - level
+                  - event_type
+                  - message
+                  - details
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2025-09-23T02:16:21.540000+00:00"
+                  level:
+                    type: string
+                    enum: [INFO, ERROR]
+                    example: "INFO"
+                  event_type:
+                    type: string
+                    description: Step Functions event type
+                    example: "ExecutionStarted"
+                  message:
+                    type: string
+                    description: Human-readable log message
+                    example: "Execution started"
+                  details:
+                    type: object
+                    description: Additional event details
+                    additionalProperties: true
+            log_summary:
+              type: object
+              required:
+                - total_events
+                - filtered_logs
+                - error_count
+              properties:
+                total_events:
+                  type: integer
+                  description: Total number of events in execution history
+                  example: 45
+                filtered_logs:
+                  type: integer
+                  description: Number of logs after applying filters
+                  example: 30
+                error_count:
+                  type: integer
+                  description: Number of error-level log entries
+                  example: 0
+                execution_duration:
+                  type: integer
+                  nullable: true
+                  description: Total execution duration in seconds
+                  example: 180
+        filters:
+          type: object
+          properties:
+            level:
+              type: string
+              example: "INFO"
+            limit:
+              type: integer
+              example: 100
+            start_time:
+              type: string
+              nullable: true
+        meta:
+          type: object
+          required:
+            - generated_at
+          properties:
+            generated_at:
+              type: string
+              format: date-time
+              example: "2025-09-23T17:45:00.000Z"
 
     SystemConfigurationResponse:
       type: object
