@@ -66,8 +66,8 @@ MIN_COMMENT_SCORE = -5
 Lambda accepts configuration via event payload:
 ```json
 {
-  "subreddits": ["LawFirm", "Lawyertalk", "legaltech"],
-  "keywords": ["Supio", "Harvey", "Casetext", ...],
+  "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"],
+  "keywords": ["Supio", "EvenUp", "Eve", "medical records", "demand letter", "medical chronology", ...],
   "days_back": 3,
   "min_score": 10,
   "incremental": false,

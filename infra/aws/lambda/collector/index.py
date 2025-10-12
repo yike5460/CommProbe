@@ -92,10 +92,12 @@ class LambdaRedditCrawler:
         self.last_request_time = time.time()
         self.backoff_until = 0  # Timestamp until which we should back off
 
-        # Configuration
+        # Configuration - PI-focused
         self.subreddits = ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"]
-        self.keywords = ["Supio", "Harvey", "Casetext", "Lexis+", "Westlaw",
-                        "AI", "automation", "document review", "contract analysis"]
+        self.keywords = ["Supio", "EvenUp", "Eve",
+                        "medical records", "demand letter", "medical chronology", "settlement demand",
+                        "medical summary", "treatment timeline", "injury documentation", "medical bills",
+                        "case valuation", "personal injury", "PI attorney"]
         self.record = self._load_record()
 
     def _load_from_s3(self, key: str, default_value: Dict) -> Dict:
@@ -811,12 +813,14 @@ def handler(event, context):
     if not bucket_name:
         raise ValueError("BUCKET_NAME environment variable not set")
 
-    # Configuration from event or defaults
+    # Configuration from event or defaults - PI-focused
     config = {
-        'subreddits': event.get('subreddits', ['LawFirm', 'Lawyertalk', 'legaltech']),
+        'subreddits': event.get('subreddits', ['LawFirm', 'Lawyertalk', 'legaltech', 'legaltechAI']),
         'keywords': event.get('keywords', [
-            'Supio', 'Harvey', 'Casetext', 'Lexis+', 'Westlaw',
-            'AI', 'automation', 'document review', 'contract analysis'
+            'Supio', 'EvenUp', 'Eve',
+            'medical records', 'demand letter', 'medical chronology', 'settlement demand',
+            'medical summary', 'treatment timeline', 'injury documentation', 'medical bills',
+            'case valuation', 'personal injury', 'PI attorney'
         ]),
         'days_back': event.get('days_back', 3),
         'min_score': event.get('min_score', 10),
@@ -886,20 +890,20 @@ def handler(event, context):
 
         print(f"Successfully collected {len(unique_posts)} posts and {total_comments} comments")
 
-        # Analyze competitor mentions
+        # Analyze PI competitor mentions
         competitor_counts = {}
         for post in unique_posts:
             # Check post title and content
             text = f"{post['title']} {post['content']}"
-            for competitor in ["Harvey", "Casetext", "Lexis", "Westlaw"]:
+            for competitor in ["EvenUp", "Eve"]:
                 if competitor.lower() in text.lower():
                     competitor_counts[competitor] = competitor_counts.get(competitor, 0) + 1
 
             # Also check comments within each post (including nested replies)
             def check_comments_for_competitors(comments_list):
-                """Recursively check comments and replies for competitor mentions"""
+                """Recursively check comments and replies for PI competitor mentions"""
                 for comment in comments_list:
-                    for competitor in ["Harvey", "Casetext", "Lexis", "Westlaw"]:
+                    for competitor in ["EvenUp", "Eve"]:
                         if competitor.lower() in comment.get("body", "").lower():
                             competitor_counts[competitor] = competitor_counts.get(competitor, 0) + 1
                     # Check nested replies

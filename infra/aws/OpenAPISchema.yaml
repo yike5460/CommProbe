@@ -65,9 +65,9 @@ paths:
                 summary: Default crawl (all subreddits, 3 days back)
                 value: {}
               custom:
-                summary: Custom crawl parameters
+                summary: Custom crawl parameters (PI-focused)
                 value:
-                  subreddits: ["LawFirm", "Lawyertalk", "legaltech"]
+                  subreddits: ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"]
                   crawl_type: "both"
                   days_back: 2
                   min_score: 8
@@ -597,7 +597,7 @@ components:
           type: array
           items:
             type: string
-          description: List of subreddit names to crawl (without r/ prefix)
+          description: List of subreddit names to crawl (without r/ prefix), focused on PI law communities
           example: ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"]
           maxItems: 10
         crawl_type:
@@ -875,15 +875,15 @@ components:
           example: 8
         feature_summary:
           type: string
-          example: "Document automation for contract review workflow"
+          example: "Medical records chronology automation for personal injury cases"
         feature_category:
           type: string
-          enum: [document_automation, workflow_management, ai_integration, case_management, billing_automation, client_communication, legal_research, compliance_tracking]
-          example: "document_automation"
+          enum: [medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management, document_automation, workflow_management, ai_integration]
+          example: "medical_records_processing"
         user_segment:
           type: string
-          enum: [large_law_firm, mid_size_firm, solo_practitioner, corporate_legal, government_legal, legal_tech_vendor]
-          example: "large_law_firm"
+          enum: [solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm, large_law_firm, mid_size_firm, solo_practitioner]
+          example: "small_pi_firm"
         subreddit:
           type: string
           example: "LawFirm"
@@ -901,7 +901,7 @@ components:
           type: array
           items:
             type: string
-          example: ["Harvey", "Clio"]
+          example: ["EvenUp", "Eve"]
 
     InsightDetailsResponse:
       type: object
@@ -983,8 +983,8 @@ components:
           example: "large"
         user_segment:
           type: string
-          enum: [large_law_firm, mid_size_firm, solo_practitioner, corporate_legal, government_legal, legal_tech_vendor]
-          example: "large_law_firm"
+          enum: [solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm, large_law_firm, mid_size_firm, solo_practitioner]
+          example: "small_pi_firm"
         ai_readiness:
           type: string
           enum: [low, medium, high]
@@ -993,7 +993,7 @@ components:
           type: array
           items:
             type: string
-          example: ["Harvey", "Clio"]
+          example: ["EvenUp", "Eve"]
         supio_mentioned:
           type: boolean
           example: false
@@ -1134,10 +1134,8 @@ components:
           additionalProperties:
             type: integer
           example:
-            Harvey: 15
-            Clio: 12
-            Relativity: 8
-            LexisNexis: 6
+            EvenUp: 18
+            Eve: 15
         recent_high_priority:
           type: array
           items:
@@ -1161,7 +1159,7 @@ components:
           example:
             - insight_id: "INSIGHT-2025-09-23-PRIORITY-9-ID-abc123"
               priority_score: 9
-              feature_summary: "AI-powered deposition analysis"
+              feature_summary: "AI-powered medical chronology automation for PI cases"
               analyzed_at: "2025-09-23T15:30:00"
 
     TrendsAnalysisResponse:
@@ -1295,7 +1293,7 @@ components:
                 properties:
                   name:
                     type: string
-                    example: "Harvey"
+                    example: "EvenUp"
                   total_mentions:
                     type: integer
                     description: Number of times this competitor was mentioned
@@ -1309,18 +1307,18 @@ components:
                     type: object
                     additionalProperties:
                       type: integer
-                    description: Breakdown of mentions by category
+                    description: Breakdown of mentions by PI category
                     example:
-                      document_automation: 8
-                      ai_integration: 7
+                      medical_records_processing: 12
+                      demand_letter_automation: 8
                   user_segments:
                     type: object
                     additionalProperties:
                       type: integer
-                    description: Breakdown of mentions by user segment
+                    description: Breakdown of mentions by PI user segment
                     example:
-                      large_law_firm: 10
-                      mid_size_firm: 5
+                      small_pi_firm: 12
+                      solo_pi_attorney: 8
                   sentiment_breakdown:
                     type: object
                     required:
@@ -1374,8 +1372,8 @@ components:
                 market_leader:
                   type: string
                   nullable: true
-                  description: Competitor with most mentions
-                  example: "Harvey"
+                  description: PI competitor with most mentions
+                  example: "EvenUp"
                 total_competitors_mentioned:
                   type: integer
                   example: 8
@@ -1387,10 +1385,10 @@ components:
                   type: object
                   additionalProperties:
                     type: integer
-                  description: Top 5 categories where competitors are discussed
+                  description: Top 5 PI categories where competitors are discussed
                   example:
-                    ai_integration: 25
-                    document_automation: 18
+                    medical_records_processing: 28
+                    demand_letter_automation: 22
         filters:
           type: object
           properties:
@@ -1575,8 +1573,8 @@ components:
               type: array
               items:
                 type: string
-              description: Default list of subreddits to crawl
-              example: ["LawFirm", "Lawyertalk", "legaladvice", "legaltechAI"]
+              description: Default list of PI-focused subreddits to crawl
+              example: ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"]
             default_crawl_type:
               type: string
               enum: [crawl, search, both]

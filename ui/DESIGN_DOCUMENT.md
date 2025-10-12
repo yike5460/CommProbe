@@ -1007,7 +1007,7 @@ const mockInsight = {
   user_segment: 'large_law_firm',
   analyzed_at: '2025-01-01T10:00:00Z',
   subreddit: 'LawFirm',
-  competitors_mentioned: ['Harvey', 'Clio'],
+  competitors_mentioned: ['EvenUp', 'Eve'],
 };
 
 describe('InsightCard', () => {
@@ -1022,8 +1022,8 @@ describe('InsightCard', () => {
 
     expect(screen.getByText('Document automation for contract review')).toBeInTheDocument();
     expect(screen.getByText('Priority 8/10')).toBeInTheDocument();
-    expect(screen.getByText('Harvey')).toBeInTheDocument();
-    expect(screen.getByText('Clio')).toBeInTheDocument();
+    expect(screen.getByText('EvenUp')).toBeInTheDocument();
+    expect(screen.getByText('Eve')).toBeInTheDocument();
   });
 
   it('calls onViewDetails when detail button is clicked', () => {

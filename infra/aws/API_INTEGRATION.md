@@ -62,7 +62,7 @@ Trigger a new Reddit crawling job with optional parameters.
 **Request Body (Optional):**
 ```json
 {
-  "subreddits": ["LawFirm", "Lawyertalk", "legaltech"],
+  "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"],
   "crawl_type": "both",
   "days_back": 3
 }
@@ -80,7 +80,7 @@ Trigger a new Reddit crawling job with optional parameters.
     "trigger_time": "2025-01-01T12:00:00.000000",
     "trigger_source": "api_gateway",
     "request_id": "abc12345-def6-7890-ghij-klmnopqrstuv",
-    "subreddits": ["LawFirm", "Lawyertalk", "legaltech"],
+    "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"],
     "crawl_type": "both",
     "days_back": 3
   }
@@ -157,14 +157,14 @@ Get filtered list of insights with pagination and analytics.
       "insight_id": "INSIGHT-2025-09-23-PRIORITY-8-ID-1nnv6yo",
       "post_id": "1nnv6yo",
       "priority_score": 8,
-      "feature_summary": "Document automation for contract review workflow",
-      "feature_category": "document_automation",
-      "user_segment": "large_law_firm",
+      "feature_summary": "Medical records chronology automation for personal injury cases",
+      "feature_category": "medical_records_processing",
+      "user_segment": "small_pi_firm",
       "subreddit": "LawFirm",
       "analyzed_at": "2025-09-23T17:44:42.643935",
       "action_required": true,
-      "suggested_action": "Evaluate feasibility for Q1 2026 roadmap",
-      "competitors_mentioned": ["Harvey", "Clio"]
+      "suggested_action": "Evaluate medical chronology automation for Q1 2026 roadmap",
+      "competitors_mentioned": ["EvenUp", "Eve"]
     }
   ],
   "pagination": {
@@ -197,19 +197,19 @@ Get detailed information for a specific insight including full post content.
     "timestamp": 1758567337,
     "analyzed_at": "2025-09-23T17:44:42.643935",
     "collected_at": "2025-09-23T17:43:53.024140+00:00",
-    "feature_summary": "Document automation for contract review workflow",
-    "feature_details": "User requesting AI-powered contract analysis...",
-    "feature_category": "document_automation",
-    "priority_score": 8,
+    "feature_summary": "Medical records chronology automation for personal injury cases",
+    "feature_details": "PI attorney requesting AI-powered medical chronology generation from hundreds of pages of medical records...",
+    "feature_category": "medical_records_processing",
+    "priority_score": 9,
     "implementation_size": "large",
-    "user_segment": "large_law_firm",
+    "user_segment": "small_pi_firm",
     "ai_readiness": "high",
-    "competitors_mentioned": ["Harvey", "Clio"],
+    "competitors_mentioned": ["EvenUp", "Eve"],
     "supio_mentioned": false,
-    "competitive_advantage": "Better integration with existing workflows",
+    "competitive_advantage": "Faster medical chronology generation with better accuracy than EvenUp",
     "action_required": true,
-    "suggested_action": "Evaluate feasibility for Q1 2026 roadmap",
-    "pain_points": ["Manual contract review", "Time consuming process"],
+    "suggested_action": "Evaluate medical records AI feasibility for Q1 2026 roadmap",
+    "pain_points": ["Manual medical chronology creation", "8-20 hours per case", "Medical terminology comprehension"],
     "post_score": 45,
     "num_comments": 23
   }
@@ -237,44 +237,42 @@ Get aggregated analytics for dashboard and reporting.
     "actionable_insights": 45,
     "avg_priority_score": 6.2,
     "by_category": {
-      "document_automation": {
-        "count": 34,
-        "avg_priority": 7.1
+      "medical_records_processing": {
+        "count": 42,
+        "avg_priority": 8.1
       },
-      "workflow_management": {
-        "count": 28,
-        "avg_priority": 6.8
+      "demand_letter_automation": {
+        "count": 35,
+        "avg_priority": 7.8
       },
-      "ai_integration": {
+      "medical_chronology": {
         "count": 31,
-        "avg_priority": 7.5
+        "avg_priority": 7.9
       }
     },
     "by_user_segment": {
-      "large_law_firm": {
-        "count": 45,
+      "small_pi_firm": {
+        "count": 48,
+        "avg_priority": 7.8
+      },
+      "solo_pi_attorney": {
+        "count": 42,
+        "avg_priority": 7.5
+      },
+      "mid_size_pi_firm": {
+        "count": 37,
         "avg_priority": 7.2
-      },
-      "solo_practitioner": {
-        "count": 38,
-        "avg_priority": 6.1
-      },
-      "corporate_legal": {
-        "count": 44,
-        "avg_priority": 6.9
       }
     },
     "top_competitors": {
-      "Harvey": 15,
-      "Clio": 12,
-      "Relativity": 8,
-      "LexisNexis": 6
+      "EvenUp": 22,
+      "Eve": 18
     },
     "recent_high_priority": [
       {
         "insight_id": "INSIGHT-2025-09-23-PRIORITY-9-ID-abc123",
         "priority_score": 9,
-        "feature_summary": "AI-powered deposition analysis",
+        "feature_summary": "AI-powered medical chronology automation for PI cases",
         "analyzed_at": "2025-09-23T15:30:00"
       }
     ]
@@ -293,7 +291,7 @@ Get current system configuration settings including crawl parameters, analysis s
 ```json
 {
   "crawl_settings": {
-    "default_subreddits": ["LawFirm", "Lawyertalk", "legaladvice", "legaltechAI"],
+    "default_subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"],
     "default_crawl_type": "both",
     "default_days_back": 3,
     "default_min_score": 10,
@@ -457,30 +455,30 @@ Get competitive analysis and market positioning insights for strategic decision 
   "data": {
     "competitors": [
       {
-        "name": "Harvey",
-        "total_mentions": 28,
-        "avg_priority": 7.4,
+        "name": "EvenUp",
+        "total_mentions": 32,
+        "avg_priority": 8.2,
         "categories": {
-          "document_automation": 15,
-          "ai_integration": 10,
-          "workflow_management": 3
+          "medical_records_processing": 22,
+          "demand_letter_automation": 15,
+          "medical_chronology": 10
         },
         "user_segments": {
-          "large_law_firm": 20,
-          "corporate_legal": 6,
-          "mid_size_firm": 2
+          "small_pi_firm": 18,
+          "solo_pi_attorney": 10,
+          "mid_size_pi_firm": 4
         },
         "sentiment_breakdown": {
-          "positive": 5,
-          "negative": 18,
-          "neutral": 5
+          "positive": 8,
+          "negative": 20,
+          "neutral": 4
         },
         "insights": [
           {
             "insight_id": "INSIGHT-2025-09-23-PRIORITY-9-ID-abc123",
             "priority_score": 9,
-            "feature_summary": "Users want Harvey-like AI but with better integration",
-            "competitive_advantage": "Better workflow integration than Harvey",
+            "feature_summary": "PI attorneys want EvenUp-like medical chronology but faster and more accurate",
+            "competitive_advantage": "Faster medical chronology generation with better medical terminology extraction than EvenUp",
             "analyzed_at": "2025-09-23T15:30:00",
             "subreddit": "LawFirm"
           }
@@ -488,13 +486,13 @@ Get competitive analysis and market positioning insights for strategic decision 
       }
     ],
     "market_analysis": {
-      "market_leader": "Harvey",
-      "total_competitors_mentioned": 8,
-      "avg_mentions_per_competitor": 12.3,
+      "market_leader": "EvenUp",
+      "total_competitors_mentioned": 6,
+      "avg_mentions_per_competitor": 18.5,
       "most_discussed_categories": {
-        "document_automation": 45,
-        "ai_integration": 32,
-        "workflow_management": 18
+        "medical_records_processing": 58,
+        "demand_letter_automation": 42,
+        "medical_chronology": 35
       }
     }
   },

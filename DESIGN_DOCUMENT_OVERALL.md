@@ -1,17 +1,18 @@
-# Legal Community Feedback Collector & Analyzer
+# Personal Injury Legal Intelligence Platform
 ## System Design Document
 
 ---
 
 ## 1. Executive Summary
 
-A data collection and analysis pipeline for monitoring legal technology discussions across Reddit communities, providing insights into user feedback, pain points, and market requirements. The system collects posts and comments from targeted subreddits, analyzes sentiment and themes using LLMs, and presents insights through a web dashboard.
+A specialized data collection and analysis pipeline for monitoring personal injury (PI) law discussions across Reddit communities, focusing on medical records processing, demand letter automation, and PI attorney workflow optimization. The system collects posts and comments from PI-focused subreddits, analyzes insights using LLMs with emphasis on medical record handling pain points, and presents actionable intelligence through a web dashboard.
 
 ### Key Features
-- Automated Reddit data collection from legal-focused subreddits
-- AI-powered analysis for sentiment, topics, and requirement extraction
+- Automated Reddit data collection from personal injury law subreddits
+- AI-powered analysis for PI-specific pain points (medical records, demand letters, settlement)
+- Focus on competitors EvenUp and Eve in PI medical record processing space
 - Weekly automated collection with manual trigger capability
-- Interactive visualization dashboard
+- Interactive visualization dashboard for PI attorney workflow insights
 - Cost-optimized serverless architecture
 
 ---
@@ -73,39 +74,40 @@ A data collection and analysis pipeline for monitoring legal technology discussi
 ### 3.1 Data Sources
 
 **Primary Sources:**
-- **Reddit API:** User feedback, pain points, feature requests
-- **Web Content:** Competitor websites, whitepapers, documentation, blog posts
+- **Reddit API:** PI attorney feedback, medical records pain points, demand letter challenges
+- **Web Content:** Competitor websites (EvenUp, Eve), PI law firm resources, medical-legal documentation
 
 **Target Content:**
 - Reddit discussions from r/LawFirm, r/Lawyertalk, r/legaltech, r/legaltechAI
-- Competitor product pages and documentation
-- Industry reports and whitepapers
-- Legal tech blog posts and news
+- PI-specific competitor product pages (EvenUp, Eve)
+- Medical-legal integration resources
+- PI law firm workflow and technology discussions
 
 **Search Keywords:**
-- Product names: "Supio", "Harvey", "Casetext", "Lexis+", "Westlaw"
-- General topics: "automation", "AI lawyer", "document review", "contract analysis"
+- Product names: "Supio", "EvenUp", "Eve"
+- PI-specific topics: "medical records", "personal injury", "demand letter", "medical chronology", "settlement demand", "medical summary", "treatment timeline", "injury documentation", "medical bills", "case valuation"
 
 ### 3.2 Collection Strategy
 
 ```python
-# Simple Collection Configuration
+# PI-Focused Collection Configuration
 {
   "reddit": {
     "schedule": "cron(0 2 ? * MON *)",  # Weekly on Monday 2 AM UTC
     "lookback_days": 7,
     "min_score": 10,  # Filter noise
-    "subreddits": ["legaltech", "LawFirm", "Lawyertalk"]
+    "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"]
   },
   "web_content": {
     "schedule": "on_demand",  # Triggered manually when needed
-    "types": ["competitor_updates", "whitepapers", "blog_posts"],
+    "types": ["competitor_updates", "pi_law_resources", "medical_legal_tech"],
     "rate_limit": 1  # 1 request per second
   },
   "processing": {
     "priority_threshold": 5,  # Only store priority >= 5
     "alert_threshold": 8,     # Alert PM for priority >= 8
-    "ttl_days": 90
+    "ttl_days": 90,
+    "focus_areas": ["medical_records_processing", "demand_letter_automation", "medical_chronology", "settlement_valuation"]
   }
 }
 ```
@@ -131,12 +133,12 @@ interface ProcessedInsight {
   
   // PM focus
   feature_summary: string;       // One-line description
-  feature_category: string;      // document_automation, ai_accuracy, integration, workflow  
+  feature_category: string;      // medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management
   priority_score: number;         // 1-10 (only store 5+)
-  user_segment: string;          // solo, small_firm, enterprise
-  
-  // Competition
-  competitors_mentioned: string[];  // ["Harvey", "Casetext"]
+  user_segment: string;          // solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm
+
+  // Competition (PI-specific)
+  competitors_mentioned: string[];  // ["EvenUp", "Eve"]
   supio_mentioned: boolean;
   
   // Action
@@ -190,77 +192,114 @@ graph LR
 
 ### 4.2 LLM Analysis Prompts
 
-**Supio-Focused Feature Discovery:**
+**Supio-Focused PI Feature Discovery:**
 ```
-As a product analyst for Supio (AI legal automation platform), analyze this post to identify:
+As a product analyst for Supio (AI legal automation platform for personal injury law), analyze this post to identify:
 
-1. FEATURE GAPS: What specific capabilities are users asking for that Supio could build?
-   - Document automation needs (intake, discovery, drafting)
-   - AI accuracy concerns and trust barriers
-   - Integration requirements with existing tools
-   - Workflow automation pain points
+1. PI-SPECIFIC FEATURE GAPS: What capabilities do PI attorneys need for medical record processing?
+   - Medical records organization and chronology creation
+   - Automated demand letter generation from medical documentation
+   - Treatment timeline extraction from medical records
+   - Medical bill summarization and cost calculation
+   - Settlement valuation based on injury severity and treatment
+   - Integration with medical providers and billing systems
 
-2. COMPETITIVE INTELLIGENCE: How do users perceive Supio vs competitors?
-   - Harvey, Casetext, Lexis+ AI, Westlaw Edge mentions
-   - Price sensitivity and value perception
-   - Switching barriers from current solutions
+2. COMPETITIVE INTELLIGENCE: How do users perceive Supio vs PI-focused competitors?
+   - EvenUp, Eve mentions (medical records processing platforms)
+   - Pain points with current medical record review workflows
+   - Time spent on manual medical chronology creation
+   - Demand letter drafting efficiency concerns
+   - Accuracy of medical information extraction
 
-3. USER SEGMENTS: Which type of legal professional is this?
-   - Solo practitioner / Small firm (1-10 attorneys)
-   - Mid-market (11-50 attorneys)  
-   - Large firm (50+ attorneys)
-   - In-house legal department
+3. USER SEGMENTS: Which type of PI legal professional is this?
+   - Solo PI practitioner (1-2 attorneys, high volume motor vehicle accidents)
+   - Small PI firm (3-10 attorneys, diverse injury cases)
+   - Mid-size PI firm (11-50 attorneys, complex medical malpractice)
+   - Large PI firm (50+ attorneys, mass torts and class actions)
 
-Return priority score (1-10) for product roadmap consideration.
+4. MEDICAL RECORDS PAIN POINTS:
+   - Volume of medical records per case (hundreds to thousands of pages)
+   - Time required for medical chronology creation (8-20 hours per case)
+   - Medical terminology comprehension challenges
+   - Identifying causation between accident and treatment
+   - Extracting key dates, procedures, and diagnoses
+   - Organizing records from multiple providers
+
+Return priority score (1-10) for product roadmap consideration with emphasis on medical workflow automation.
 ```
 
-**Pain Point to Product Feature Mapping:**
+**PI Pain Point to Product Feature Mapping:**
 ```
-Analyze this legal professional's workflow challenge and suggest how Supio could address it:
+Analyze this PI attorney's medical records workflow challenge and suggest how Supio could address it:
 
-1. CURRENT PAIN: What manual/inefficient process are they describing?
-2. SUPIO SOLUTION: Specific feature that could automate/improve this
+1. CURRENT PAIN: What manual medical records process are they describing?
+   - Hours spent creating medical chronologies manually
+   - Difficulty organizing records from multiple providers
+   - Challenge understanding complex medical terminology
+   - Time-consuming demand letter drafting with medical details
+   - Manual calculation of medical expenses and future costs
+
+2. SUPIO SOLUTION: Specific PI-focused feature that could automate/improve this
+   - AI-powered medical chronology generation
+   - Automated treatment timeline extraction
+   - Medical terminology translation for legal professionals
+   - Demand letter automation with medical narrative
+   - Intelligent medical bill aggregation and cost projection
+
 3. IMPLEMENTATION COMPLEXITY: Simple config, new feature, or platform change
-4. MARKET DEMAND: Is this a one-off request or common pattern?
-5. ROI POTENTIAL: Time saved, error reduction, or revenue impact
+4. MARKET DEMAND: Is this a one-off request or common pattern in PI practice?
+5. ROI POTENTIAL: Time saved per case (medical chronology: 8-20 hours), error reduction in medical facts, faster settlement negotiations
 
-Prioritize for: Quick wins, Strategic features, or Future consideration
+Prioritize for: Quick wins (medical chronology), Strategic features (demand letter automation), or Future consideration
 ```
 
-**AI Adoption Readiness Assessment:**
+**PI Attorney AI Adoption Readiness Assessment:**
 ```
-Evaluate this legal professional's readiness for AI-powered tools like Supio:
+Evaluate this PI attorney's readiness for AI-powered medical records processing tools like Supio:
 
-1. TECH MATURITY: Current tool usage and digital sophistication
-2. AI PERCEPTION: Enthusiastic, cautious, skeptical, or hostile
-3. DECISION FACTORS: 
-   - Primary concern: accuracy, security, cost, or ease-of-use
-   - Success metrics they care about
-4. ONBOARDING NEEDS: Training, proof-of-concept, or peer validation required
-5. EXPANSION POTENTIAL: Single use case or platform-wide adoption likely
+1. TECH MATURITY: Current case management and medical records tools
+   - Using basic tools (Excel, Word) vs specialized PI software
+   - Experience with medical records review software
+   - Comfort level with AI-assisted legal tools
 
-Recommend: Sales approach, feature emphasis, and support level needed
+2. AI PERCEPTION: Enthusiastic, cautious, skeptical, or hostile toward AI medical analysis
+   - Trust in AI accuracy for medical terminology extraction
+   - Concerns about malpractice liability with AI-generated chronologies
+   - Willingness to review AI-generated demand letters
+
+3. DECISION FACTORS:
+   - Primary concern: medical accuracy, HIPAA compliance, cost per case, time savings
+   - Success metrics: hours saved per medical chronology, faster settlement times, increased case capacity
+   - Integration with existing PI case management systems
+
+4. ONBOARDING NEEDS: Training on medical AI features, proof-of-concept with sample case, or peer validation from other PI firms
+5. EXPANSION POTENTIAL: Single use case (medical chronology only) vs full PI workflow adoption (chronology + demand letters + settlement valuation)
+
+Recommend: Sales approach emphasizing medical accuracy validation, feature emphasis on time savings per case, and support level for medical terminology training
 ```
 
-**Web Content Analysis (Competitor Sites, Whitepapers, etc.):**
+**PI Competitor Analysis (EvenUp, Eve, Medical Records Platforms):**
 ```
-Analyze this web content for Supio product insights:
+Analyze this web content for Supio PI product insights:
 
 URL: {url}
-Content Type: {type} (competitor_site, whitepaper, blog_post)
+Content Type: {type} (competitor_site, pi_resource, medical_legal_tech)
+Competitor: {competitor_name} (EvenUp, Eve)
 
 Extract:
-1. Key features or capabilities mentioned
-2. Pricing information if available
-3. Customer segments targeted
-4. Competitive advantages claimed
-5. Integration partnerships mentioned
+1. Key medical records processing features (chronology, demand letters, medical summarization)
+2. Pricing model (per case, subscription, or percentage of settlement)
+3. PI attorney segments targeted (solo, small firm, high volume motor vehicle, complex medical malpractice)
+4. Medical accuracy claims and validation methodology
+5. Integration with PI case management systems
+6. HIPAA compliance and data security features
 
 For Supio PM:
-- Feature gaps to exploit
-- Positioning opportunities
-- Priority: 1-10
-- Suggested action
+- Feature gaps in medical records automation to exploit
+- Positioning opportunities vs EvenUp/Eve
+- PI-specific differentiation potential (medical terminology extraction, treatment causation analysis)
+- Priority: 1-10 with emphasis on medical workflow impact
+- Suggested action for PI market penetration
 ```
 
 ### 4.3 DynamoDB Schema & Usage
@@ -282,20 +321,20 @@ For Supio PM:
   post_url: string,             // Direct link to Reddit discussion
   ttl: number,                  // Auto-expire after 90 days
   
-  // User Context
-  user_segment: string,         // solo, small_firm, enterprise
-  
-  // Feature Request (main PM focus)
+  // PI User Context
+  user_segment: string,         // solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm
+
+  // PI Feature Request (main PM focus)
   feature_summary: string,      // One-line description for PM dashboard
   feature_details: string,      // Full extracted requirement
-  feature_category: string,     // document_automation, ai_accuracy, integration, workflow
+  feature_category: string,     // medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management
   priority_score: number,       // 1-10 for roadmap prioritization
   implementation_size: string,  // small, medium, large
-  
-  // Competitive Context (market intelligence)
-  competitors_mentioned: string[],  // ["Harvey", "Casetext", etc.]
+
+  // PI Competitive Context (market intelligence)
+  competitors_mentioned: string[],  // ["EvenUp", "Eve"]
   supio_mentioned: boolean,        // Direct Supio feedback
-  competitive_advantage: string,    // How this feature helps vs competitors
+  competitive_advantage: string,    // How this feature helps vs EvenUp/Eve in medical records processing
   
   // Action Items (what PM should do)
   action_required: boolean,     // Needs immediate PM review
@@ -907,49 +946,56 @@ class BedrockAnalyzer:
         messages = [{
             "role": "user",
             "content": f"""
-            Analyze this Reddit post from the legal technology community r/{post['subreddit']}.
-            
+            Analyze this Reddit post from the personal injury law community r/{post['subreddit']}.
+
             Post Title: {post['title']}
             Post Content: {post.get('content', 'No text content')}
             Post Score: {post['score']} points
             Number of Comments: {post['num_comments']}
-            
+
             Top Comments:
             {comments_text}
-            
-            Analyze this post as a Supio product analyst to extract actionable insights:
-            
-            1. Feature Discovery:
-               - Identify specific features users are requesting that Supio could build
-               - Categorize: document_automation, ai_accuracy, integration, workflow, discovery_management
-               - Assign priority score (1-10) based on user pain level and market demand
-               - Note if this is a quick_win, strategic_feature, or future_consideration
-            
-            2. Competitive Intelligence:
-               - Identify mentions of competitors (Harvey, Casetext, Lexis+, Westlaw, others)
-               - Assess sentiment toward each competitor (-1 to 1)
-               - Extract specific strengths/weaknesses mentioned
-               - Note if user is considering switching from/to any solution
-            
-            3. User Segmentation:
-               - Identify user type: solo_practitioner, small_firm, mid_market, large_firm, in_house
-               - Assess AI readiness: enthusiastic, cautious, skeptical, hostile
-               - Note tech maturity level based on tools mentioned
-               - Identify decision-making factors (cost, accuracy, security, ease_of_use)
-            
-            4. Pain Point Analysis:
-               - Extract specific workflow inefficiencies or manual processes
-               - Map each pain point to potential Supio solution
-               - Assess implementation complexity: simple_config, new_feature, platform_change
-               - Estimate ROI potential: hours_saved_weekly, error_reduction_percentage
-            
-            5. Action Items for PM:
-               - Flag if immediate PM review needed (true/false)
-               - Suggest specific product roadmap items
-               - Identify potential beta testing candidates
-               - Note any urgent competitive threats
-            
-            Return your analysis as a valid JSON object.
+
+            Analyze this post as a Supio product analyst focusing on PI law medical records automation:
+
+            1. PI-Specific Feature Discovery:
+               - Identify medical records processing pain points (volume, organization, chronology creation)
+               - Detect demand letter automation needs (medical narrative, treatment timeline, causation)
+               - Note medical bill aggregation and cost calculation challenges
+               - Categorize: medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management
+               - Assign priority score (1-10) based on time savings potential and frequency of need
+               - Note if this is a quick_win (medical chronology automation), strategic_feature (demand letter AI), or future_consideration
+
+            2. PI Competitive Intelligence:
+               - Identify mentions of PI-focused competitors (EvenUp, Eve)
+               - Assess sentiment toward each competitor's medical records processing features
+               - Extract specific strengths/weaknesses of competitors' medical chronology tools
+               - Note switching barriers from current medical records workflow
+               - Identify gaps in competitor medical terminology extraction accuracy
+
+            3. PI User Segmentation:
+               - Identify user type: solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm
+               - Note case types: motor_vehicle_accidents, slip_and_fall, medical_malpractice, workers_comp, mass_torts
+               - Assess medical records volume per case (pages per typical case)
+               - Assess AI readiness for medical analysis: enthusiastic, cautious, skeptical, hostile
+               - Identify decision-making factors (medical accuracy, HIPAA compliance, time savings per case, cost per chronology)
+
+            4. Medical Records Pain Point Analysis:
+               - Extract time spent on manual medical chronology creation (typical: 8-20 hours per case)
+               - Identify challenges with medical terminology comprehension
+               - Note difficulty organizing records from multiple providers
+               - Assess demand letter drafting bottlenecks with medical narrative
+               - Map each pain point to potential Supio medical AI solution
+               - Estimate ROI potential: hours_saved_per_chronology, cases_handled_per_month_increase, faster_settlement_times
+
+            5. Action Items for PI-Focused PM:
+               - Flag if immediate PM review needed for high-value medical automation opportunity
+               - Suggest specific medical records feature roadmap items
+               - Identify potential beta testing candidates (PI firms willing to try medical AI)
+               - Note any urgent competitive threats from EvenUp/Eve medical features
+               - Recommend proof-of-concept medical chronology samples to demonstrate accuracy
+
+            Return your analysis as a valid JSON object with emphasis on medical workflow impact.
             """
         }]
         
@@ -1002,25 +1048,27 @@ class BedrockAnalyzer:
         return results
     
     def extract_requirements(self, text: str) -> List[Dict[str, str]]:
-        """Extract Supio-specific feature requirements and opportunities"""
+        """Extract Supio PI-specific medical records feature requirements"""
         messages = [{
             "role": "user",
             "content": f"""
-            As a Supio product analyst, extract actionable feature requirements from this text:
-            
+            As a Supio product analyst for personal injury law, extract actionable medical records feature requirements from this text:
+
             {text}
-            
+
             For each requirement found, provide:
-            - requirement: Specific feature or capability needed
-            - supio_approach: How Supio could uniquely solve this (leverage AI, automation, etc.)
-            - category: document_automation, discovery_management, ai_assistance, integration, workflow_optimization
-            - priority_score: 1-10 (based on pain level and frequency mentioned)
-            - implementation_effort: small (1 sprint), medium (2-4 sprints), large (quarter+)
-            - user_segment: solo, small_firm, mid_market, enterprise, in_house
-            - competitive_advantage: How this helps Supio vs Harvey/Casetext/others
-            - success_metric: How to measure if this feature succeeds
-            
-            Focus on requirements that align with Supio's legal AI automation mission.
+            - requirement: Specific medical records or PI workflow feature needed
+            - supio_approach: How Supio could uniquely solve this with medical AI (automated chronology, demand letter generation, medical terminology extraction, etc.)
+            - category: medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management
+            - priority_score: 1-10 (based on time savings potential per case and frequency in PI practice)
+            - implementation_effort: small (medical timeline extraction), medium (demand letter automation), large (full settlement valuation AI)
+            - user_segment: solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm
+            - medical_workflow_impact: hours_saved_per_chronology, cases_per_month_increase, faster_settlement_times
+            - competitive_advantage: How this helps Supio vs EvenUp/Eve in medical records processing accuracy and speed
+            - success_metric: Hours saved per medical chronology, demand letter generation time, medical accuracy rate
+
+            Focus on requirements that align with Supio's PI medical records automation mission.
+            Prioritize features that save 5+ hours per case for PI attorneys.
             Return as a JSON array sorted by priority_score.
             """
         }]

@@ -121,7 +121,7 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
     ])
     
     prompt = f"""
-    Analyze this Reddit post from the legal technology community r/{post['subreddit']}.
+    Analyze this Reddit post from the personal injury law community r/{post['subreddit']}.
 
     Post Title: {post['title']}
     Post Content: {post.get('content', 'No text content')}
@@ -131,53 +131,61 @@ def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:
     Top Comments:
     {comments_text}
 
-    Analyze this post as a Supio product analyst to extract actionable insights:
+    Analyze this post as a Supio product analyst focusing on PI law medical records automation:
 
-    1. Feature Discovery:
-       - Identify specific features users are requesting that Supio could build
-       - Categorize: document_automation, ai_accuracy, integration, workflow, discovery_management
-       - Assign priority score (1-10) based on user pain level and market demand
-       - Note if this is a quick_win, strategic_feature, or future_consideration
+    1. PI-Specific Feature Discovery:
+       - Identify medical records processing pain points (volume, organization, chronology creation)
+       - Detect demand letter automation needs (medical narrative, treatment timeline, causation)
+       - Note medical bill aggregation and cost calculation challenges
+       - Categorize: medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management
+       - Assign priority score (1-10) based on time savings potential per case and frequency of need
+       - Note if quick_win (medical chronology automation), strategic_feature (demand letter AI), or future_consideration
 
-    2. Competitive Intelligence:
-       - Identify mentions of competitors (Harvey, Casetext, Lexis+, Westlaw, others)
-       - Assess sentiment toward each competitor (-1 to 1)
-       - Extract specific strengths/weaknesses mentioned
-       - Note if user is considering switching from/to any solution
+    2. PI Competitive Intelligence:
+       - Identify mentions of PI-focused competitors (EvenUp, Eve)
+       - Assess sentiment toward each competitor's medical records processing features
+       - Extract specific strengths/weaknesses of competitors' medical chronology tools
+       - Note switching barriers from current medical records workflow
+       - Identify gaps in competitor medical terminology extraction accuracy
 
-    3. User Segmentation:
-       - Identify user type: solo_practitioner, small_firm, mid_market, large_firm, in_house
-       - Assess AI readiness: enthusiastic, cautious, skeptical, hostile
-       - Note tech maturity level based on tools mentioned
-       - Identify decision-making factors (cost, accuracy, security, ease_of_use)
+    3. PI User Segmentation:
+       - Identify user type: solo_pi_attorney, small_pi_firm, mid_size_pi_firm, large_pi_firm
+       - Note case types: motor_vehicle_accidents, slip_and_fall, medical_malpractice, workers_comp, mass_torts
+       - Assess medical records volume per case (pages per typical case)
+       - Assess AI readiness for medical analysis: enthusiastic, cautious, skeptical, hostile
+       - Identify decision factors (medical accuracy, HIPAA compliance, time savings per case, cost per chronology)
 
-    4. Pain Point Analysis:
-       - Extract specific workflow inefficiencies or manual processes
-       - Map each pain point to potential Supio solution
-       - Assess implementation complexity: simple_config, new_feature, platform_change
-       - Estimate ROI potential: hours_saved_weekly, error_reduction_percentage
+    4. Medical Records Pain Point Analysis:
+       - Extract time spent on manual medical chronology creation (typical: 8-20 hours per case)
+       - Identify challenges with medical terminology comprehension
+       - Note difficulty organizing records from multiple providers
+       - Assess demand letter drafting bottlenecks with medical narrative
+       - Map each pain point to potential Supio medical AI solution
+       - Estimate ROI potential: hours_saved_per_chronology, cases_handled_per_month_increase, faster_settlement_times
 
-    5. Action Items for PM:
-       - Flag if immediate PM review needed (true/false)
-       - Suggest specific product roadmap items
-       - Identify potential beta testing candidates
-       - Note any urgent competitive threats
+    5. Action Items for PI-Focused PM:
+       - Flag if immediate PM review needed for high-value medical automation opportunity
+       - Suggest specific medical records feature roadmap items
+       - Identify potential beta testing candidates (PI firms willing to try medical AI)
+       - Note any urgent competitive threats from EvenUp/Eve medical features
+       - Recommend proof-of-concept medical chronology samples to demonstrate accuracy
 
     IMPORTANT: Return ONLY a valid JSON object with no markdown formatting, no code blocks, no explanations. Start directly with {{ and end with }}.
 
     {{
-        "feature_summary": "one-line description",
-        "feature_category": "document_automation|ai_accuracy|integration|workflow|discovery_management|not_applicable",
+        "feature_summary": "one-line description emphasizing medical workflow impact",
+        "feature_category": "medical_records_processing|demand_letter_automation|medical_chronology|settlement_valuation|case_management|not_applicable",
         "priority_score": 1-10,
-        "user_segment": "solo_practitioner|small_firm|mid_market|large_firm|in_house|consumer|not_applicable",
-        "competitors_mentioned": ["Harvey", "Casetext", "Lexis+", "Westlaw"],
+        "user_segment": "solo_pi_attorney|small_pi_firm|mid_size_pi_firm|large_pi_firm|not_applicable",
+        "competitors_mentioned": ["EvenUp", "Eve"],
         "supio_mentioned": true|false,
         "action_required": true|false,
         "suggested_action": "quick_win|strategic_feature|future_consideration|no_action",
-        "pain_points": ["specific workflow inefficiency"],
-        "competitive_advantage": "how this helps vs competitors",
+        "pain_points": ["specific medical workflow inefficiency with time estimate"],
+        "competitive_advantage": "how this helps Supio vs EvenUp/Eve in medical records processing",
         "implementation_size": "small|medium|large|not_applicable",
-        "ai_readiness": "enthusiastic|cautious|skeptical|hostile|not_applicable"
+        "ai_readiness": "enthusiastic|cautious|skeptical|hostile|not_applicable",
+        "medical_workflow_impact": "hours_saved_per_chronology|cases_per_month_increase|faster_settlement_times|not_applicable"
     }}
     """
     
