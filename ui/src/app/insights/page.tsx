@@ -184,24 +184,27 @@ export default function InsightsPage() {
 
   // These should ideally come from the system configuration API
   // but are hardcoded for now as they represent standard enum values
+  // PI-focused categories
   const categories = [
+    'medical_records_processing',
+    'demand_letter_automation',
+    'medical_chronology',
+    'settlement_valuation',
+    'case_management',
     'document_automation',
     'workflow_management',
-    'ai_integration',
-    'case_management',
-    'billing_automation',
-    'client_communication',
-    'legal_research',
-    'compliance_tracking'
+    'ai_integration'
   ];
 
+  // PI attorney segments
   const userSegments = [
+    'solo_pi_attorney',
+    'small_pi_firm',
+    'mid_size_pi_firm',
+    'large_pi_firm',
     'large_law_firm',
     'mid_size_firm',
-    'solo_practitioner',
-    'corporate_legal',
-    'government_legal',
-    'legal_tech_vendor'
+    'solo_practitioner'
   ];
 
   return (
@@ -211,7 +214,7 @@ export default function InsightsPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Insights Explorer</h1>
           <p className="text-muted-foreground mt-1">
-            Discover and analyze feature requests from legal communities
+            Discover and analyze PI law feature requests and medical records automation insights
           </p>
         </div>
         <div className="flex items-center space-x-3">
