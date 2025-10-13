@@ -55,8 +55,10 @@ export class LegalCrawlerStack extends Stack {
     });
 
     // ===========================================
-    // DynamoDB Table
+    // DynamoDB Tables
     // ===========================================
+
+    // Insights Table
     const insightsTable = new dynamodb.Table(this, 'SupioInsights', {
       tableName: 'supio-insights',
       partitionKey: {
@@ -85,6 +87,20 @@ export class LegalCrawlerStack extends Stack {
       sortKey: {
         name: 'GSI1SK',
         type: dynamodb.AttributeType.STRING,
+      },
+    });
+
+    // System Configuration Table
+    const configTable = new dynamodb.Table(this, 'SystemConfigTable', {
+      tableName: 'supio-system-config',
+      partitionKey: {
+        name: 'config_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.RETAIN, // Keep configuration even if stack is deleted
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
       },
     });
 
@@ -293,6 +309,7 @@ def handler(event, context):
       environment: {
         STATE_MACHINE_ARN: stateMachine.stateMachineArn,
         INSIGHTS_TABLE_NAME: insightsTable.tableName,
+        CONFIG_TABLE_NAME: configTable.tableName,
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -304,6 +321,9 @@ def handler(event, context):
 
     // Grant DynamoDB read permissions for insights endpoints
     insightsTable.grantReadData(apiFunction);
+
+    // Grant DynamoDB read/write permissions for configuration endpoints
+    configTable.grantReadWriteData(apiFunction);
 
     // Create REST API
     const api = new apigateway.RestApi(this, 'CrawlerApi', {

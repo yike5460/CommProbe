@@ -539,6 +539,71 @@ test_config_update() {
     fi
 }
 
+# Test 11B: Configuration Persistence Verification (Critical)
+test_config_persistence() {
+    log_info "Testing configuration persistence (GET -> PUT -> GET cycle)..."
+
+    # Step 1: Get current configuration
+    local initial_config
+    initial_config=$(api_request "GET" "/config")
+
+    if ! echo "$initial_config" | jq -e '.crawl_settings.default_days_back' > /dev/null 2>&1; then
+        add_result "FAIL" "Config Persistence" "Cannot read initial config"
+        log_error "Failed to read initial configuration"
+        return 1
+    fi
+
+    local initial_days_back
+    initial_days_back=$(echo "$initial_config" | jq -r '.crawl_settings.default_days_back')
+    log_info "Initial default_days_back: $initial_days_back"
+
+    # Step 2: Update configuration with a unique value
+    local new_days_back=7
+    local update_data="{\"crawl_settings\": {\"default_days_back\": $new_days_back}}"
+    local update_response
+    update_response=$(api_request "PUT" "/config" "$update_data")
+
+    if ! echo "$update_response" | jq -e '.message' > /dev/null 2>&1; then
+        add_result "FAIL" "Config Persistence" "Update failed"
+        log_error "Configuration update failed"
+        return 1
+    fi
+
+    log_info "Configuration updated successfully"
+
+    # Step 3: Wait briefly for DynamoDB consistency
+    sleep 2
+
+    # Step 4: Read configuration again to verify persistence
+    local updated_config
+    updated_config=$(api_request "GET" "/config")
+
+    if ! echo "$updated_config" | jq -e '.crawl_settings.default_days_back' > /dev/null 2>&1; then
+        add_result "FAIL" "Config Persistence" "Cannot read updated config"
+        log_error "Failed to read updated configuration"
+        return 1
+    fi
+
+    local persisted_days_back
+    persisted_days_back=$(echo "$updated_config" | jq -r '.crawl_settings.default_days_back')
+    log_info "Persisted default_days_back: $persisted_days_back"
+
+    # Step 5: Verify the value matches what we set
+    if [ "$persisted_days_back" -eq "$new_days_back" ]; then
+        add_result "PASS" "Config Persistence" "Configuration persisted correctly: $new_days_back -> $persisted_days_back"
+        log_success "Configuration persistence verified!"
+    else
+        add_result "FAIL" "Config Persistence" "Configuration not persisted: expected $new_days_back, got $persisted_days_back"
+        log_error "Configuration persistence failed"
+        return 1
+    fi
+
+    # Step 6: Restore original value
+    local restore_data="{\"crawl_settings\": {\"default_days_back\": $initial_days_back}}"
+    api_request "PUT" "/config" "$restore_data" > /dev/null 2>&1
+    log_info "Restored original configuration"
+}
+
 # Test 12: Health Check Endpoint (Priority 2)
 test_health_check() {
     log_info "Testing health check endpoint..."
@@ -873,6 +938,7 @@ main() {
         # Configuration & Management tests (Priority 2 endpoints)
         test_system_config || true
         test_config_update || true
+        test_config_persistence || true
         test_health_check || true
 
         # Enhanced Analytics tests (Priority 3 endpoints)

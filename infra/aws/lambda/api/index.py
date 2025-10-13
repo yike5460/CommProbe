@@ -17,7 +17,7 @@ dynamodb = boto3.resource('dynamodb')
 
 # Configuration constants
 DEFAULT_CRAWL_SETTINGS = {
-    'default_subreddits': ['LawFirm', 'Lawyertalk', 'legaladvice', 'legaltechAI'],
+    'default_subreddits': ['LawFirm', 'Lawyertalk', 'legaltech', 'legaltechAI'],
     'default_crawl_type': 'both',
     'default_days_back': 3,
     'default_min_score': 10,
@@ -55,6 +55,18 @@ class DecimalEncoder(json.JSONEncoder):
             else:
                 return float(obj)
         return super(DecimalEncoder, self).default(obj)
+
+
+def convert_decimals(obj):
+    """Recursively convert Decimal objects to int/float in nested structures"""
+    if isinstance(obj, list):
+        return [convert_decimals(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert_decimals(value) for key, value in obj.items()}
+    elif isinstance(obj, Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    else:
+        return obj
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -134,15 +146,36 @@ def handle_trigger_crawl(event: Dict[str, Any], context: Any, headers: Dict[str,
             except json.JSONDecodeError:
                 return create_response(400, {'error': 'Invalid JSON in request body'}, headers)
 
-        # Prepare execution input with default and custom parameters
+        # Load saved configuration from DynamoDB
+        config_table_name = os.environ.get('CONFIG_TABLE_NAME', 'supio-system-config')
+        crawl_config = DEFAULT_CRAWL_SETTINGS.copy()
+
+        try:
+            config_table = dynamodb.Table(config_table_name)
+            response = config_table.get_item(Key={'config_id': 'system_config'})
+
+            if 'Item' in response:
+                stored_config = convert_decimals(response['Item'].get('config', {}))
+                stored_crawl_settings = stored_config.get('crawl_settings', {})
+                crawl_config.update(stored_crawl_settings)
+                print(f"Using saved configuration from DynamoDB: {crawl_config}")
+        except Exception as db_error:
+            print(f"Could not load saved config, using defaults: {str(db_error)}")
+
+        # Prepare execution input with saved config as baseline
         execution_input = {
             'manual_trigger': True,
             'trigger_time': datetime.now(timezone.utc).isoformat(),
             'trigger_source': 'api_gateway',
-            'request_id': context.aws_request_id
+            'request_id': context.aws_request_id,
+            # Use saved configuration as defaults
+            'subreddits': crawl_config['default_subreddits'],
+            'crawl_type': crawl_config['default_crawl_type'],
+            'days_back': crawl_config['default_days_back'],
+            'min_score': crawl_config['default_min_score']
         }
 
-        # Allow custom crawl parameters from request body
+        # Allow custom crawl parameters from request body to override saved config
         if body.get('subreddits'):
             execution_input['subreddits'] = body['subreddits']
         if body.get('crawl_type'):
@@ -695,13 +728,39 @@ def handle_analytics_summary(event: Dict[str, Any], headers: Dict[str, str]) -> 
 def handle_get_config(headers: Dict[str, str]) -> Dict[str, Any]:
     """Handle GET /config - Get system configuration"""
     try:
-        # Default configuration settings (in production, these would come from DynamoDB or Parameter Store)
-        config = {
-            'crawl_settings': DEFAULT_CRAWL_SETTINGS,
-            'analysis_settings': DEFAULT_ANALYSIS_SETTINGS,
-            'storage_settings': DEFAULT_STORAGE_SETTINGS,
-            'system_settings': DEFAULT_SYSTEM_SETTINGS
-        }
+        # Try to load configuration from DynamoDB
+        config_table_name = os.environ.get('CONFIG_TABLE_NAME', 'supio-system-config')
+
+        try:
+            config_table = dynamodb.Table(config_table_name)
+            response = config_table.get_item(Key={'config_id': 'system_config'})
+
+            if 'Item' in response:
+                # Merge stored config with defaults (to handle new settings added later)
+                stored_config = convert_decimals(response['Item'].get('config', {}))
+                config = {
+                    'crawl_settings': {**DEFAULT_CRAWL_SETTINGS, **stored_config.get('crawl_settings', {})},
+                    'analysis_settings': {**DEFAULT_ANALYSIS_SETTINGS, **stored_config.get('analysis_settings', {})},
+                    'storage_settings': {**DEFAULT_STORAGE_SETTINGS, **stored_config.get('storage_settings', {})},
+                    'system_settings': {**DEFAULT_SYSTEM_SETTINGS, **stored_config.get('system_settings', {})}
+                }
+            else:
+                # Use defaults if no stored config found
+                config = {
+                    'crawl_settings': DEFAULT_CRAWL_SETTINGS,
+                    'analysis_settings': DEFAULT_ANALYSIS_SETTINGS,
+                    'storage_settings': DEFAULT_STORAGE_SETTINGS,
+                    'system_settings': DEFAULT_SYSTEM_SETTINGS
+                }
+        except Exception as db_error:
+            # Graceful fallback to defaults if table doesn't exist or other DB errors
+            print(f"Config table not available, using defaults: {str(db_error)}")
+            config = {
+                'crawl_settings': DEFAULT_CRAWL_SETTINGS,
+                'analysis_settings': DEFAULT_ANALYSIS_SETTINGS,
+                'storage_settings': DEFAULT_STORAGE_SETTINGS,
+                'system_settings': DEFAULT_SYSTEM_SETTINGS
+            }
 
         return create_response(200, config, headers)
 
@@ -728,16 +787,51 @@ def handle_update_config(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
             if section not in allowed_sections:
                 return create_response(400, {'error': f'Invalid configuration section: {section}'}, headers)
 
-        # In production, this would update DynamoDB or Parameter Store
-        # For now, return success with the updated configuration
-        updated_config = {
-            'message': 'Configuration updated successfully',
-            'updated_sections': list(config_update.keys()),
-            'timestamp': datetime.utcnow().isoformat(),
-            'updated_by': 'api_user'  # In production, extract from authentication
-        }
+        # Save configuration to DynamoDB
+        config_table_name = os.environ.get('CONFIG_TABLE_NAME', 'supio-system-config')
 
-        return create_response(200, updated_config, headers)
+        try:
+            config_table = dynamodb.Table(config_table_name)
+
+            # Load existing configuration
+            existing_response = config_table.get_item(Key={'config_id': 'system_config'})
+            current_config = existing_response['Item'].get('config', {}) if 'Item' in existing_response else {}
+
+            # Merge updates with existing config and defaults
+            updated_config_data = {
+                'crawl_settings': {**DEFAULT_CRAWL_SETTINGS, **current_config.get('crawl_settings', {}), **config_update.get('crawl_settings', {})},
+                'analysis_settings': {**DEFAULT_ANALYSIS_SETTINGS, **current_config.get('analysis_settings', {}), **config_update.get('analysis_settings', {})},
+                'storage_settings': {**DEFAULT_STORAGE_SETTINGS, **current_config.get('storage_settings', {}), **config_update.get('storage_settings', {})},
+                'system_settings': {**DEFAULT_SYSTEM_SETTINGS, **current_config.get('system_settings', {}), **config_update.get('system_settings', {})}
+            }
+
+            # Save to DynamoDB
+            config_table.put_item(
+                Item={
+                    'config_id': 'system_config',
+                    'config': updated_config_data,
+                    'updated_at': datetime.utcnow().isoformat(),
+                    'updated_by': 'api_user'  # In production, extract from authentication
+                }
+            )
+
+            return create_response(200, {
+                'message': 'Configuration updated successfully',
+                'updated_sections': list(config_update.keys()),
+                'timestamp': datetime.utcnow().isoformat(),
+                'updated_by': 'api_user'
+            }, headers)
+
+        except Exception as db_error:
+            # Graceful degradation if table doesn't exist
+            print(f"Warning: Config table not available: {str(db_error)}")
+            return create_response(200, {
+                'message': 'Configuration updated (in-memory only)',
+                'warning': 'Config table not available, changes will not persist',
+                'updated_sections': list(config_update.keys()),
+                'timestamp': datetime.utcnow().isoformat(),
+                'updated_by': 'api_user'
+            }, headers)
 
     except Exception as e:
         print(f"Error updating configuration: {str(e)}")
