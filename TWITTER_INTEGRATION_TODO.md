@@ -62,15 +62,15 @@ The API tiers have been completely restructured. **Essential/Elevated tiers are 
 **Steps:**
 1. Apply for X Developer Account at https://developer.x.com/
 2. Choose API tier:
-   - **Testing:** Free tier ($0/month) - 100 posts/month (very limited)
-   - **Production:** Basic tier ($200/month) - 15,000 posts/month ✅ **RECOMMENDED**
-   - **Scale:** Pro tier ($5,000/month) - 1M posts/month
+  - **Testing:** Free tier ($0/month) - 100 posts/month (very limited)
+  - **Production:** Basic tier ($200/month) - 15,000 posts/month ✅ **RECOMMENDED**
+  - **Scale:** Pro tier ($5,000/month) - 1M posts/month
 3. Create a new Project: "Legal Tech Intelligence Platform"
 4. Create a new App within the project: "Supio Insights Collector"
 5. Generate credentials (OAuth 2.0 Bearer Token - Recommended for read-only):
-   - **Bearer Token** (for app-only access - simplest) ✅ **RECOMMENDED**
-   - OR API Key + API Secret (for OAuth 1.0a - legacy)
-   - OR Client ID + Client Secret (for OAuth 2.0 user context - if posting needed)
+  - **Bearer Token** (for app-only access - simplest) ✅ **RECOMMENDED**
+  - OR API Key + API Secret (for OAuth 1.0a - legacy)
+  - OR Client ID + Client Secret (for OAuth 2.0 user context - if posting needed)
 
 **Acceptance Criteria:**
 - [ ] Developer account approved
@@ -1202,32 +1202,32 @@ aws s3 cp s3://supio-raw-data-xxx/twitter/2025-01-20/tweets_xxx.json -
 **Test Scenarios:**
 
 1. **Scenario 1: Reddit + Twitter Collection**
-   - Trigger: POST /trigger with both platforms
-   - Expected: Both collectors run in parallel
-   - Verify: S3 has data from both sources
-   - Verify: Insights table has entries from both platforms
+  - Trigger: POST /trigger with both platforms
+  - Expected: Both collectors run in parallel
+  - Verify: S3 has data from both sources
+  - Verify: Insights table has entries from both platforms
 
 2. **Scenario 2: Twitter-Only Collection**
-   - Trigger: POST /trigger with `{"platforms": ["twitter"]}`
-   - Expected: Only Twitter collector runs
-   - Verify: No Reddit data collected
+  - Trigger: POST /trigger with `{"platforms": ["twitter"]}`
+  - Expected: Only Twitter collector runs
+  - Verify: No Reddit data collected
 
 3. **Scenario 3: Platform Filter in UI**
-   - Action: Select "Twitter Only" in insights filter
-   - Expected: Only Twitter insights displayed
-   - Verify: API receives platform=twitter parameter
+  - Action: Select "Twitter Only" in insights filter
+  - Expected: Only Twitter insights displayed
+  - Verify: API receives platform=twitter parameter
 
 4. **Scenario 4: Configuration Persistence**
-   - Action: Disable Twitter in config UI
-   - Action: Save configuration
-   - Action: Trigger collection
-   - Expected: Twitter collector skipped
-   - Verify: Only Reddit data collected
+  - Action: Disable Twitter in config UI
+  - Action: Save configuration
+  - Action: Trigger collection
+  - Expected: Twitter collector skipped
+  - Verify: Only Reddit data collected
 
 5. **Scenario 5: Rate Limit Handling**
-   - Action: Trigger multiple collections rapidly
-   - Expected: Tweepy handles rate limits gracefully
-   - Verify: No errors, automatic backoff
+  - Action: Trigger multiple collections rapidly
+  - Expected: Tweepy handles rate limits gracefully
+  - Verify: No errors, automatic backoff
 
 **Acceptance Criteria:**
 - [ ] All scenarios pass
@@ -1389,21 +1389,24 @@ npx cdk deploy \
 
 **Note:** Follow your existing credential management pattern. If you have Reddit credentials in cdk.json, add Twitter credentials there as well.
 
+3. **Capture outputs:**
+
+```bash
 # Capture outputs
-export API_URL=$(aws cloudformation describe-stacks \\
-  --stack-name legal-crawler-dev \\
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \\
+export API_URL=$(aws cloudformation describe-stacks \
+  --stack-name legal-crawler-dev \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
   --output text)
 
-export API_KEY_ID=$(aws cloudformation describe-stacks \\
-  --stack-name legal-crawler-dev \\
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiKeyId`].OutputValue' \\
+export API_KEY_ID=$(aws cloudformation describe-stacks \
+  --stack-name legal-crawler-dev \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiKeyId`].OutputValue' \
   --output text)
 
-export API_KEY=$(aws apigateway get-api-key \\
-  --api-key $API_KEY_ID \\
-  --include-value \\
-  --query 'value' \\
+export API_KEY=$(aws apigateway get-api-key \
+  --api-key $API_KEY_ID \
+  --include-value \
+  --query 'value' \
   --output text)
 
 # Update frontend config
@@ -1415,14 +1418,14 @@ echo "NEXT_PUBLIC_API_KEY=$API_KEY" >> ui/src/.env.production
 
 ```bash
 # Test API
-curl -X POST $API_URL/trigger \\
-  -H "X-API-Key: $API_KEY" \\
-  -H "Content-Type: application/json" \\
+curl -X POST $API_URL/trigger \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
   -d '{"platforms": ["twitter"], "twitter_config": {"lookback_days": 1}}'
 
 # Check execution
-aws stepfunctions list-executions \\
-  --state-machine-arn arn:aws:states:...:stateMachine:supio-multi-source-insights-pipeline \\
+aws stepfunctions list-executions \
+  --state-machine-arn arn:aws:states:...:stateMachine:supio-multi-source-insights-pipeline \
   --max-items 1
 
 # Monitor logs
@@ -1505,28 +1508,28 @@ alarmTopic.addSubscription(
 **Steps:**
 
 1. **Week 1: Shadow Mode**
-   - Enable Twitter collection
-   - Don't display in UI yet
-   - Monitor data quality
-   - Compare with Reddit insights
+  - Enable Twitter collection
+  - Don't display in UI yet
+  - Monitor data quality
+  - Compare with Reddit insights
 
 2. **Week 2: Beta Release**
-   - Show Twitter insights to internal team
-   - Gather feedback on relevance
-   - Adjust search queries
-   - Tune engagement threshold
+  - Show Twitter insights to internal team
+  - Gather feedback on relevance
+  - Adjust search queries
+  - Tune engagement threshold
 
 3. **Week 3: Limited Release**
-   - Enable for subset of users
-   - Add platform filter to UI
-   - Monitor usage metrics
-   - Fix any issues
+  - Enable for subset of users
+  - Add platform filter to UI
+  - Monitor usage metrics
+  - Fix any issues
 
 4. **Week 4: Full Release**
-   - Enable for all users
-   - Announce new feature
-   - Update documentation
-   - Collect user feedback
+  - Enable for all users
+  - Announce new feature
+  - Update documentation
+  - Collect user feedback
 
 **Acceptance Criteria:**
 - [ ] Phased rollout complete
