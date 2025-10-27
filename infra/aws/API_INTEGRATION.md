@@ -6,7 +6,17 @@ The Reddit Crawler API provides REST endpoints for triggering and monitoring Red
 
 ## Architecture
 
-The API is implemented as a dedicated AWS Lambda function (`/infra/aws/lambda/api/index.py`) that integrates with AWS Step Functions to orchestrate the Reddit crawling pipeline. This follows the same architecture pattern as other Lambda functions in the system.
+The API is implemented as a dedicated AWS Lambda function (`/infra/aws/lambda/api/index.py`) that integrates with:
+- **AWS Step Functions** to orchestrate the Reddit crawling pipeline
+- **DynamoDB** to read insights and manage system configuration
+- **CloudWatch** for execution logs and monitoring
+
+**Key Features:**
+- Single Lambda function handles all 14 REST endpoints
+- Python 3.12 runtime with shared dependencies layer
+- Configuration persistence in DynamoDB `supio-system-config` table
+- Default configuration values with override capability
+- Comprehensive error handling and CORS support
 
 ## API Endpoints
 
@@ -287,6 +297,12 @@ Get aggregated analytics for dashboard and reporting.
 ### 8. GET /config - Get System Configuration
 Get current system configuration settings including crawl parameters, analysis settings, and system defaults.
 
+**Configuration Persistence:**
+- Configuration is stored in DynamoDB table `supio-system-config`
+- Config item key: `config_id = "system_config"`
+- If no saved config exists, returns default values
+- POST /trigger automatically loads saved config and uses it as baseline
+
 **Response:**
 ```json
 {
@@ -317,20 +333,37 @@ Get current system configuration settings including crawl parameters, analysis s
 }
 ```
 
+**Default Values (Hardcoded in Lambda):**
+- These defaults are returned if no configuration is saved in DynamoDB
+- Defined in `/infra/aws/lambda/api/index.py` as constants
+
 ### 9. PUT /config - Update System Configuration
-Update system configuration settings. Only specified sections will be updated; other settings remain unchanged.
+Update system configuration settings. Configuration is persisted to DynamoDB and will be automatically loaded on the next crawl trigger.
+
+**Configuration Persistence Flow:**
+1. PUT /config saves new settings to DynamoDB `supio-system-config` table
+2. POST /trigger loads saved config from DynamoDB
+3. Trigger request body can still override saved config for one-time adjustments
+4. EventBridge scheduled runs also use saved configuration
 
 **Request Body:**
 ```json
 {
   "crawl_settings": {
-    "default_days_back": 5
+    "default_days_back": 5,
+    "default_subreddits": ["LawFirm", "Lawyertalk", "legaltech"]
   },
   "system_settings": {
     "maintenance_mode": false
   }
 }
 ```
+
+**Implementation Notes:**
+- Configuration is merged with existing values (partial updates supported)
+- DynamoDB item structure: `{config_id: "system_config", config: {...}, updated_at: timestamp}`
+- Invalid sections return 400 error
+- Valid sections: crawl_settings, analysis_settings, storage_settings, system_settings
 
 **Response:**
 ```json
@@ -1060,12 +1093,80 @@ The API includes full CORS support with:
 
 To deploy the API:
 
-1. Ensure Reddit API credentials are configured
+1. Ensure Reddit API credentials are configured in cdk.json context or pass via CLI
 2. Deploy the CDK stack:
    ```bash
+   cd infra/aws
    npx cdk deploy --context redditClientId=YOUR_CLIENT_ID --context redditClientSecret=YOUR_CLIENT_SECRET
    ```
-3. Note the API URL and API Key from the deployment outputs
-4. Configure your Cloudflare Workers with the API URL and key
+3. Note the API URL and API Key from the deployment outputs:
+   - `ApiUrl`: Full API Gateway URL (e.g., https://xxxxxx.execute-api.us-west-2.amazonaws.com/v1/)
+   - `ApiKeyId`: API Key ID for retrieving the actual key
+4. Get the actual API key value:
+   ```bash
+   aws apigateway get-api-key --api-key <ApiKeyId> --include-value --query 'value' --output text
+   ```
+5. Configure frontend environment variables:
+   - `NEXT_PUBLIC_API_URL`: The API Gateway URL from step 3
+   - `NEXT_PUBLIC_API_KEY`: The API key value from step 4
 
 The API will be immediately available for triggering crawl jobs and monitoring their status.
+
+## Implementation Details
+
+### Lambda Function Structure
+
+**File:** `/infra/aws/lambda/api/index.py`
+
+**Key Components:**
+- `handler()`: Main entry point, routes requests to appropriate handlers
+- `handle_trigger_crawl()`: Loads config from DynamoDB, starts Step Functions execution
+- `handle_list_insights()`: Queries DynamoDB with filtering support
+- `handle_analytics_summary()`: Aggregates insights for dashboard
+- `handle_get_config()`: Returns current configuration or defaults
+- `handle_update_config()`: Persists configuration to DynamoDB
+- `convert_decimals()`: Helper to serialize DynamoDB Decimal types
+
+**Environment Variables:**
+- `STATE_MACHINE_ARN`: ARN of Step Functions state machine
+- `INSIGHTS_TABLE_NAME`: DynamoDB insights table name (`supio-insights`)
+- `CONFIG_TABLE_NAME`: DynamoDB config table name (`supio-system-config`)
+
+**DynamoDB Tables Used:**
+1. **supio-insights** - Main insights storage
+   - PK: `INSIGHT#{YYYY-MM-DD}`
+   - SK: `PRIORITY#{score}#ID#{post_id}`
+   - GSI1PK/GSI1SK: For priority-based queries
+
+2. **supio-system-config** - Configuration persistence (NEW!)
+   - PK: `config_id` (always "system_config")
+   - Attributes: `config` (nested JSON), `updated_at`, `updated_by`
+   - RemovalPolicy: RETAIN (persists even if stack is deleted)
+
+### Configuration Behavior
+
+**Default Values (when no config in DynamoDB):**
+```python
+DEFAULT_CRAWL_SETTINGS = {
+    'default_subreddits': ['LawFirm', 'Lawyertalk', 'legaltech', 'legaltechAI'],
+    'default_crawl_type': 'both',
+    'default_days_back': 3,
+    'default_min_score': 10,
+    'max_posts_per_crawl': 500
+}
+```
+
+**Override Priority (highest to lowest):**
+1. Request body parameters in POST /trigger
+2. Saved configuration in DynamoDB
+3. Hardcoded defaults in Lambda code
+
+**Example Flow:**
+```
+1. User updates config via PUT /config { "crawl_settings": { "default_days_back": 7 } }
+2. Config saved to DynamoDB
+3. User triggers crawl via POST /trigger (no body)
+4. Lambda loads config from DynamoDB → uses days_back=7
+5. User triggers crawl with POST /trigger { "days_back": 3 }
+6. Lambda uses days_back=3 (request overrides saved config for this execution only)
+```

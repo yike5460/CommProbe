@@ -5,12 +5,13 @@
 This document outlines the comprehensive UI/UX design for the Legal Community Feedback Collector & Analyzer frontend application. The system provides product managers and legal tech professionals with actionable insights from Reddit communities, competitive intelligence, and data-driven feature prioritization tools.
 
 **Technology Stack:**
-- **Framework:** Next.js 14 (App Router)
-- **Styling:** Tailwind CSS + shadcn/ui components
-- **Deployment:** Cloudflare Pages + Workers
-- **State Management:** React Query + Zustand
-- **Charts:** Recharts + D3.js
-- **API Integration:** 14 comprehensive REST endpoints
+- **Framework:** Next.js 15.0.0 (App Router)
+- **React:** React 19.1.0 with React DOM 19.1.0
+- **Styling:** Tailwind CSS v4 + shadcn/ui components + lucide-react icons
+- **Deployment:** Cloudflare Pages with @cloudflare/next-on-pages adapter
+- **State Management:** TanStack Query (React Query v5) + Zustand v5
+- **Charts:** Recharts v3 + date-fns for formatting
+- **API Integration:** 14 REST endpoints via `/api/proxy` to avoid CORS
 
 ---
 
@@ -34,35 +35,32 @@ This document outlines the comprehensive UI/UX design for the Legal Community Fe
 ### 2.1 Application Structure
 
 ```
-/dashboard
-├── /overview          # Executive dashboard with KPIs
-├── /insights          # Feature request explorer
-│   ├── /priority      # High-priority insights queue
-│   ├── /categories    # Insights by feature category
-│   └── /details/[id]  # Individual insight deep-dive
-├── /analytics         # Data visualization and trends
-│   ├── /trends        # Historical trend analysis
-│   ├── /competitors   # Competitive intelligence
-│   └── /reports       # Weekly/monthly summaries
-├── /operations        # System management
-│   ├── /executions    # Pipeline execution monitoring
-│   ├── /logs          # System logs and debugging
-│   └── /settings      # Configuration management
-└── /api               # API integration layer
+/ (root page.tsx)      # Landing page
+/dashboard             # Executive dashboard with KPIs
+/insights              # Feature request explorer with filtering
+/analytics             # Data visualization and summaries
+/trends                # Historical trend analysis (separate page)
+/operations            # Pipeline execution monitoring
+/config                # System configuration management
+/api/proxy/[...path]   # API proxy to avoid CORS issues
 ```
 
 ### 2.2 Navigation Hierarchy
 
-**Top-Level Navigation:**
-1. **Dashboard** - Overview and quick actions
-2. **Insights** - Feature discovery and analysis
-3. **Analytics** - Trends and competitive intelligence
-4. **Operations** - System monitoring and configuration
+**Top-Level Navigation (Sidebar):**
+1. **Dashboard** - Overview with KPIs and recent insights
+2. **Insights** - Feature request explorer with filtering
+3. **Analytics** - Summary analytics dashboard
+4. **Trends** - Historical trend analysis charts
+5. **Operations** - Pipeline execution monitoring
+6. **Config** - System configuration settings
 
-**Secondary Navigation:**
-- Breadcrumb navigation for deep pages
-- Context-sensitive filters and actions
-- Quick access toolbar for common tasks
+**Layout Components:**
+- AppLayout: Main layout wrapper with Sidebar + Header
+- Sidebar: Navigation menu with icons (using lucide-react)
+- Header: Page title and user actions
+- QueryProvider: TanStack Query setup
+- ThemeProvider: Theme context (future dark mode support)
 
 ---
 
@@ -95,11 +93,11 @@ This document outlines the comprehensive UI/UX design for the Legal Community Fe
 ### 3.2 Typography
 
 ```css
-/* Font Families */
---font-sans: 'Inter', sans-serif;          /* UI text */
---font-mono: 'JetBrains Mono', monospace;  /* Code/data */
+/* Font Families (Tailwind CSS defaults) */
+--font-sans: system-ui, -apple-system, sans-serif;  /* UI text */
+--font-mono: ui-monospace, monospace;               /* Code/data */
 
-/* Type Scale */
+/* Type Scale (Tailwind CSS v4) */
 --text-xs: 0.75rem;    /* Labels, captions */
 --text-sm: 0.875rem;   /* Body text, descriptions */
 --text-base: 1rem;     /* Default body */
@@ -854,41 +852,96 @@ NEXT_PUBLIC_API_URL = "https://6bsn9muwfi.execute-api.us-west-2.amazonaws.com/v1
 NEXT_PUBLIC_API_KEY = "vPJlvaa0DS9tqxH41eNIA20Sofzb0cG719d8dd0i"
 ```
 
-### 9.2 Edge Functions for API Proxy
+### 9.2 API Proxy Implementation (Next.js API Routes)
+
+**IMPORTANT:** The frontend uses a Next.js API route proxy instead of Cloudflare Workers middleware to avoid CORS issues and securely handle API keys.
 
 ```typescript
-// functions/_middleware.ts
-export async function onRequest(context: EventContext) {
-  const request = context.request;
-  const url = new URL(request.url);
+// app/api/proxy/[...path]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 
-  // Proxy API requests through Cloudflare Workers
-  if (url.pathname.startsWith('/api/')) {
-    const apiUrl = new URL(url.pathname.replace('/api', ''), context.env.API_BASE_URL);
-    apiUrl.search = url.search;
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { path: string[] } }
+) {
+  return handleProxyRequest(request, params.path, 'GET');
+}
 
-    const apiRequest = new Request(apiUrl.toString(), {
-      method: request.method,
-      headers: {
-        ...request.headers,
-        'X-API-Key': context.env.API_KEY,
-      },
-      body: request.body,
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { path: string[] } }
+) {
+  return handleProxyRequest(request, params.path, 'POST');
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { path: string[] } }
+) {
+  return handleProxyRequest(request, params.path, 'PUT');
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { path: string[] } }
+) {
+  return handleProxyRequest(request, params.path, 'DELETE');
+}
+
+async function handleProxyRequest(
+  request: NextRequest,
+  pathSegments: string[],
+  method: string
+) {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY!;
+
+    // Build the full API URL
+    const path = pathSegments.join('/');
+    const url = new URL(path, apiUrl);
+
+    // Copy query parameters
+    request.nextUrl.searchParams.forEach((value, key) => {
+      url.searchParams.append(key, value);
     });
 
-    const response = await fetch(apiRequest);
+    // Forward the request to AWS API Gateway
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    };
 
-    // Add CORS headers and cache controls
-    const corsResponse = new Response(response.body, response);
-    corsResponse.headers.set('Access-Control-Allow-Origin', '*');
-    corsResponse.headers.set('Cache-Control', 'public, max-age=300');
+    const body = method !== 'GET' ? await request.text() : undefined;
 
-    return corsResponse;
+    const response = await fetch(url.toString(), {
+      method,
+      headers,
+      body,
+    });
+
+    const data = await response.text();
+
+    return new NextResponse(data, {
+      status: response.status,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Proxy error', message: error.message },
+      { status: 500 }
+    );
   }
-
-  return context.next();
 }
 ```
+
+**Benefits of this approach:**
+- Securely stores API key on server-side (not exposed to client)
+- Avoids CORS preflight requests
+- Simplifies frontend API calls (no need for API key in client code)
+- Works seamlessly with Cloudflare Pages deployment
 
 ---
 
@@ -1206,25 +1259,31 @@ export const useKeyboardNavigation = (items: any[], onSelect: (item: any) => voi
 ### 13.1 Project Structure
 
 ```
-/src
-├── app/                    # Next.js 14 App Router
+/ui/src/
+├── app/                    # Next.js 15 App Router
 │   ├── layout.tsx         # Root layout
 │   ├── page.tsx           # Landing page
-│   ├── dashboard/         # Dashboard pages
-│   ├── insights/          # Insights explorer
-│   ├── analytics/         # Analytics dashboard
-│   └── operations/        # Operations panel
+│   ├── globals.css        # Global Tailwind styles
+│   ├── dashboard/page.tsx # Dashboard page
+│   ├── insights/page.tsx  # Insights explorer
+│   ├── analytics/page.tsx # Analytics summary
+│   ├── trends/page.tsx    # Trends analysis
+│   ├── operations/page.tsx # Operations panel
+│   ├── config/page.tsx    # Configuration page
+│   └── api/proxy/[...path]/route.ts  # API proxy endpoint
 ├── components/            # Reusable components
-│   ├── ui/               # shadcn/ui components
-│   ├── charts/           # Data visualization
-│   ├── forms/            # Form components
-│   └── layout/           # Layout components
+│   ├── ui/               # shadcn/ui components (15 components)
+│   ├── layout/           # AppLayout, Header, Sidebar
+│   └── providers/        # QueryProvider, ThemeProvider
 ├── hooks/                # Custom React hooks
+│   └── useApi.ts         # React Query hooks for all API calls
 ├── services/             # API services
-├── stores/               # State management
+│   └── api.ts            # SupioApiService singleton
+├── stores/               # Zustand state management
 ├── types/                # TypeScript definitions
-├── utils/                # Utility functions
-└── styles/               # Global styles
+│   └── index.ts          # All API types
+├── lib/                  # Utility functions
+└── public/               # Static assets
 ```
 
 ### 13.2 Development Commands
@@ -1234,16 +1293,11 @@ export const useKeyboardNavigation = (items: any[], onSelect: (item: any) => voi
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cf": "npx @cloudflare/next-on-pages@1",
+    "preview": "npm run build:cf && wrangler pages dev .vercel/output/static",
+    "deploy": "npm run build:cf && wrangler pages deploy .vercel/output/static",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
-    "deploy": "wrangler pages deploy out",
-    "deploy:staging": "wrangler pages deploy out --env staging"
+    "lint": "eslint"
   }
 }
 ```

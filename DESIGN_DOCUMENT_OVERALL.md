@@ -8,12 +8,14 @@
 A specialized data collection and analysis pipeline for monitoring personal injury (PI) law discussions across Reddit communities, focusing on medical records processing, demand letter automation, and PI attorney workflow optimization. The system collects posts and comments from PI-focused subreddits, analyzes insights using LLMs with emphasis on medical record handling pain points, and presents actionable intelligence through a web dashboard.
 
 ### Key Features
-- Automated Reddit data collection from personal injury law subreddits
+- **Multi-Platform Data Collection**: Automated collection from Reddit and X (Twitter)
+- **Reddit Integration**: Personal injury law subreddits monitoring
+- **X/Twitter Integration**: Real-time social media insights from legal tech discussions (NEW!)
 - AI-powered analysis for PI-specific pain points (medical records, demand letters, settlement)
 - Focus on competitors EvenUp and Eve in PI medical record processing space
-- Weekly automated collection with manual trigger capability
+- Weekly automated collection with manual trigger capability for both platforms
 - Interactive visualization dashboard for PI attorney workflow insights
-- Cost-optimized serverless architecture
+- Cost-optimized serverless architecture with unified data pipeline
 
 ---
 
@@ -56,15 +58,16 @@ A specialized data collection and analysis pipeline for monitoring personal inju
 
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
-| **Frontend** | Next.js 14 (App Router) | React-based, SSR/SSG support, excellent DX |
-| **Hosting** | Cloudflare Pages | Edge deployment, free tier, global CDN |
-| **API Layer** | Cloudflare Workers | Serverless, edge computing, cost-effective |
-| **Data Collection** | AWS Lambda | Serverless, pay-per-use, easy scheduling |
+| **Frontend** | Next.js 15.0.0 (App Router) | React 19.1.0, SSR/SSG support, modern features |
+| **Hosting** | Cloudflare Pages | Edge deployment with @cloudflare/next-on-pages adapter |
+| **API Layer** | API Gateway + Lambda | REST API with 14 endpoints, API key authentication |
+| **API Proxy** | Next.js API Routes | `/api/proxy` handles CORS and authentication |
+| **Data Collection** | AWS Lambda (Python 3.12) | Serverless, pay-per-use, easy scheduling |
 | **Orchestration** | AWS Step Functions | State management, error handling, retries |
 | **LLM Processing** | Amazon Bedrock (Claude Sonnet 4) | Superior capability, no infrastructure, pay-per-token |
 | **Primary Storage** | AWS S3 | Cheap object storage for raw data |
-| **Primary Database** | DynamoDB | Serverless NoSQL, auto-scaling, time-series optimized |
-| **Scheduling** | EventBridge | Weekly cron trigger for collection |
+| **Primary Database** | DynamoDB | Two tables: supio-insights + supio-system-config |
+| **Scheduling** | EventBridge | Weekly cron trigger (Monday 2 AM UTC) |
 | **Monitoring** | CloudWatch | Built-in AWS metrics and logging |
 
 ---
@@ -75,28 +78,59 @@ A specialized data collection and analysis pipeline for monitoring personal inju
 
 **Primary Sources:**
 - **Reddit API:** PI attorney feedback, medical records pain points, demand letter challenges
+- **X (Twitter) API v2:** Real-time legal tech discussions, PI attorney sentiment, product mentions (NEW!)
 - **Web Content:** Competitor websites (EvenUp, Eve), PI law firm resources, medical-legal documentation
 
-**Target Content:**
+**Target Content - Reddit:**
 - Reddit discussions from r/LawFirm, r/Lawyertalk, r/legaltech, r/legaltechAI
 - PI-specific competitor product pages (EvenUp, Eve)
 - Medical-legal integration resources
 - PI law firm workflow and technology discussions
 
-**Search Keywords:**
+**Target Content - X/Twitter (NEW!):**
+- Legal tech influencers and thought leaders
+- PI attorney practice management discussions
+- Product announcements and feature releases
+- User testimonials and complaints
+- Competitor mentions and comparisons
+- Industry news and trends
+
+**Search Keywords (Both Platforms):**
 - Product names: "Supio", "EvenUp", "Eve"
 - PI-specific topics: "medical records", "personal injury", "demand letter", "medical chronology", "settlement demand", "medical summary", "treatment timeline", "injury documentation", "medical bills", "case valuation"
+- Legal tech hashtags: "#legaltech", "#lawfirm", "#PIlaw", "#legalAI"
 
 ### 3.2 Collection Strategy
 
 ```python
-# PI-Focused Collection Configuration
+# Multi-Platform Collection Configuration
 {
   "reddit": {
     "schedule": "cron(0 2 ? * MON *)",  # Weekly on Monday 2 AM UTC
     "lookback_days": 7,
     "min_score": 10,  # Filter noise
-    "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"]
+    "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"],
+    "api_version": "PRAW",
+    "rate_limit": "60 requests/minute"
+  },
+  "twitter": {  # NEW!
+    "schedule": "cron(0 3 ? * MON *)",  # Weekly on Monday 3 AM UTC (after Reddit)
+    "lookback_days": 7,
+    "min_engagement": 5,  # Minimum likes + retweets
+    "api_version": "v2",
+    "search_queries": [
+      "legaltech OR legal tech OR #legaltech",
+      "personal injury attorney OR PI attorney",
+      "Supio OR EvenUp OR Eve",
+      "medical records processing",
+      "demand letter automation"
+    ],
+    "user_lists": [
+      "legal_tech_influencers",  # Curated list of thought leaders
+      "pi_attorneys"             # PI attorney accounts
+    ],
+    "rate_limit": "300 tweets/15-min window",
+    "max_tweets_per_query": 100
   },
   "web_content": {
     "schedule": "on_demand",  # Triggered manually when needed
@@ -107,7 +141,12 @@ A specialized data collection and analysis pipeline for monitoring personal inju
     "priority_threshold": 5,  # Only store priority >= 5
     "alert_threshold": 8,     # Alert PM for priority >= 8
     "ttl_days": 90,
-    "focus_areas": ["medical_records_processing", "demand_letter_automation", "medical_chronology", "settlement_valuation"]
+    "focus_areas": ["medical_records_processing", "demand_letter_automation", "medical_chronology", "settlement_valuation"],
+    "source_weighting": {  # NEW! Different weights by platform
+      "reddit": 1.0,      # Base weight
+      "twitter": 0.9,     # Slightly lower due to brevity
+      "web": 0.8          # Lower for scraped content
+    }
   }
 }
 ```
@@ -118,10 +157,30 @@ A specialized data collection and analysis pipeline for monitoring personal inju
 // Raw data stored in S3 (any source)
 interface RawContent {
   id: string;
-  source_type: string;    // "reddit" or "web"
+  source_type: string;    // "reddit", "twitter", or "web"
+  source_platform: string; // NEW! More specific: "reddit_post", "twitter_tweet", "twitter_reply"
   url: string;
   collected_at: number;
   raw_content: any;       // Original JSON/HTML/text
+
+  // Platform-specific metadata
+  platform_metadata?: {
+    // Twitter-specific
+    tweet_id?: string;
+    author_username?: string;
+    author_verified?: boolean;
+    engagement?: {
+      likes: number;
+      retweets: number;
+      replies: number;
+      quotes: number;
+    };
+
+    // Reddit-specific
+    subreddit?: string;
+    post_score?: number;
+    num_comments?: number;
+  };
 }
 
 // Processed insight stored in DynamoDB (unified)
@@ -584,14 +643,16 @@ export class LegalCrawlerStack extends Stack {
       }]
     });
 
-    // Simplified DynamoDB Table for PM insights
+    // DynamoDB Tables
+
+    // Insights Table - Main data storage
     const insightsTable = new Table(this, 'SupioInsights', {
       tableName: 'supio-insights',
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,  // Cost-effective for prototype
       timeToLiveAttribute: 'ttl',  // Auto-cleanup after 90 days
-      
+
       // Single GSI for priority queries
       globalSecondaryIndexes: [{
         indexName: 'GSI1',
@@ -600,48 +661,157 @@ export class LegalCrawlerStack extends Stack {
       }]
     });
 
+    // System Configuration Table - New! Persists user configuration
+    const configTable = new Table(this, 'SystemConfigTable', {
+      tableName: 'supio-system-config',
+      partitionKey: { name: 'config_id', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.RETAIN, // Keep config even if stack is deleted
+    });
+
+    // Lambda Layer for shared dependencies
+    const dependenciesLayer = new LayerVersion(this, 'DependenciesLayer', {
+      code: Code.fromAsset(path.join(__dirname, '../lambda/layer')),
+      compatibleRuntimes: [Runtime.PYTHON_3_12],
+      description: 'Shared dependencies (praw, tweepy, boto3, etc.)',  // NEW! Added tweepy
+    });
+
     // Lambda Functions
-    const collector = new Function(this, 'Collector', {
-      runtime: Runtime.PYTHON_3_11,
-      handler: 'collector.handler',
+
+    // Reddit Collector Lambda
+    const redditCollector = new Function(this, 'RedditCollectorFunction', {
+      runtime: Runtime.PYTHON_3_12,
+      code: Code.fromAsset(path.join(__dirname, '../lambda/collector/reddit')),
+      handler: 'index.handler',
       timeout: Duration.minutes(15),
       memorySize: 1024,
       environment: {
         BUCKET_NAME: rawDataBucket.bucketName,
-        REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID!,
-        REDDIT_SECRET: process.env.REDDIT_SECRET!,
-      }
+        REDDIT_CLIENT_ID: redditClientId,
+        REDDIT_CLIENT_SECRET: redditClientSecret,
+        REDDIT_USER_AGENT: redditUserAgent,
+      },
+      layers: [dependenciesLayer],
+      logRetention: RetentionDays.ONE_WEEK,
     });
 
-    // Simplified Step Functions for batch processing
-    const processingStateMachine = new StateMachine(this, 'RedditInsightsPipeline', {
-      definition: new Chain()
-        .start(new LambdaInvoke(this, 'CollectPosts', {
-          lambdaFunction: collector,
-          outputPath: '$.Payload'
-        }))
+    // Twitter/X Collector Lambda (NEW!)
+    const twitterCollector = new Function(this, 'TwitterCollectorFunction', {
+      runtime: Runtime.PYTHON_3_12,
+      code: Code.fromAsset(path.join(__dirname, '../lambda/collector/twitter')),
+      handler: 'index.handler',
+      timeout: Duration.minutes(15),
+      memorySize: 1024,
+      environment: {
+        BUCKET_NAME: rawDataBucket.bucketName,
+        TWITTER_BEARER_TOKEN: twitterBearerToken,  // Twitter API v2 auth
+        TWITTER_API_KEY: twitterApiKey,
+        TWITTER_API_SECRET: twitterApiSecret,
+      },
+      layers: [dependenciesLayer],
+      logRetention: RetentionDays.ONE_WEEK,
+    });
+
+    // Multi-Source Step Functions Pipeline (NEW! Parallel collection)
+    const processingStateMachine = new StateMachine(this, 'MultiSourceInsightsPipeline', {
+      stateMachineName: 'supio-multi-source-insights-pipeline',
+      definition: new Parallel(this, 'ParallelCollection', {
+        comment: 'Collect from Reddit and Twitter in parallel',
+      })
+        .branch(
+          // Reddit collection branch
+          new LambdaInvoke(this, 'CollectRedditPosts', {
+            lambdaFunction: redditCollector,
+            outputPath: '$.Payload',
+          })
+        )
+        .branch(
+          // Twitter collection branch (NEW!)
+          new LambdaInvoke(this, 'CollectTwitterPosts', {
+            lambdaFunction: twitterCollector,
+            outputPath: '$.Payload',
+          })
+        )
+        // Merge results and analyze
         .next(new LambdaInvoke(this, 'AnalyzePosts', {
           lambdaFunction: analyzer,
-          outputPath: '$.Payload'
+          outputPath: '$.Payload',
+          comment: 'Analyze posts from both platforms',
         }))
+        // Store insights
         .next(new LambdaInvoke(this, 'StoreInsights', {
           lambdaFunction: storer,
-          outputPath: '$.Payload'
+          outputPath: '$.Payload',
         })),
-      timeout: Duration.hours(1),  // Reduced from 2 hours
+      timeout: Duration.hours(1),
+      logs: {
+        destination: new LogGroup(this, 'StateMachineLogGroup', {
+          retention: RetentionDays.ONE_WEEK,
+        }),
+        level: LogLevel.ALL,
+      },
     });
 
     // EventBridge Rule - Only scheduling component needed
     new Rule(this, 'WeeklyRedditCollection', {
       ruleName: 'supio-weekly-reddit-insights',
       description: 'Trigger Reddit collection every Monday morning',
-      schedule: Schedule.cron({ 
+      schedule: Schedule.cron({
         minute: '0',
         hour: '2',
         weekDay: 'MON'  // Weekly collection
       }),
       targets: [new SfnStateMachine(processingStateMachine)],
     });
+
+    // API Lambda Function - Handles all 14 REST endpoints
+    const apiFunction = new Function(this, 'ApiFunction', {
+      runtime: Runtime.PYTHON_3_12,
+      code: Code.fromAsset(path.join(__dirname, '../lambda/api')),
+      handler: 'index.handler',
+      timeout: Duration.seconds(30),
+      environment: {
+        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+        INSIGHTS_TABLE_NAME: insightsTable.tableName,
+        CONFIG_TABLE_NAME: configTable.tableName,  // Configuration persistence
+      },
+      layers: [dependenciesLayer],
+      logRetention: RetentionDays.ONE_WEEK,
+    });
+
+    // Grant permissions
+    stateMachine.grantStartExecution(apiFunction);
+    stateMachine.grantRead(apiFunction);
+    insightsTable.grantReadData(apiFunction);
+    configTable.grantReadWriteData(apiFunction);  // Config management
+
+    // API Gateway with 14 endpoints
+    const api = new RestApi(this, 'CrawlerApi', {
+      restApiName: 'Supio Reddit Crawler API',
+      description: 'API for triggering and monitoring Reddit crawl jobs',
+      defaultCorsPreflightOptions: {
+        allowOrigins: Cors.ALL_ORIGINS,
+        allowMethods: Cors.ALL_METHODS,
+      },
+      deployOptions: {
+        stageName: 'v1',
+        loggingLevel: MethodLoggingLevel.INFO,
+      },
+    });
+
+    // Create all 14 endpoints (documented in API_INTEGRATION.md)
+    const integration = new LambdaIntegration(apiFunction);
+
+    api.root.addMethod('GET', integration);  // Documentation
+    api.root.addResource('trigger').addMethod('POST', integration);
+    api.root.addResource('status').addResource('{executionName}').addMethod('GET', integration);
+    api.root.addResource('executions').addMethod('GET', integration);
+    api.root.addResource('insights').addMethod('GET', integration);
+    api.root.addResource('analytics').addResource('summary').addMethod('GET', integration);
+    api.root.addResource('config').addMethod('GET', integration);
+    api.root.addResource('config').addMethod('PUT', integration);
+    api.root.addResource('health').addMethod('GET', integration);
+    // ... (see API_INTEGRATION.md for complete endpoint list)
   }
 }
 ```
