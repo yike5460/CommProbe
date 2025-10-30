@@ -17,11 +17,26 @@ dynamodb = boto3.resource('dynamodb')
 
 # Configuration constants
 DEFAULT_CRAWL_SETTINGS = {
+    # Reddit settings
     'default_subreddits': ['LawFirm', 'Lawyertalk', 'legaltech', 'legaltechAI'],
     'default_crawl_type': 'both',
     'default_days_back': 3,
     'default_min_score': 10,
-    'max_posts_per_crawl': 500
+    'max_posts_per_crawl': 500,
+
+    # Twitter/X settings
+    'twitter_enabled': True,
+    'twitter_lookback_days': 7,
+    'twitter_min_engagement': 5,
+    'twitter_max_tweets_per_query': 100,
+    'twitter_api_tier': 'basic',  # 'free', 'basic', or 'pro'
+    'twitter_search_queries': [
+        'legaltech OR #legaltech',
+        'personal injury attorney OR PI attorney',
+        'Supio OR EvenUp OR Eve',
+        '(medical records processing) (law OR legal)',
+        '(demand letter automation) (attorney OR lawyer)',
+    ]
 }
 
 DEFAULT_ANALYSIS_SETTINGS = {
@@ -168,11 +183,21 @@ def handle_trigger_crawl(event: Dict[str, Any], context: Any, headers: Dict[str,
             'trigger_time': datetime.now(timezone.utc).isoformat(),
             'trigger_source': 'api_gateway',
             'request_id': context.aws_request_id,
-            # Use saved configuration as defaults
+            # Platform selection (NEW: supports both Reddit and Twitter)
+            'platforms': body.get('platforms', ['reddit', 'twitter']),  # Default: both platforms
+            # Reddit configuration
             'subreddits': crawl_config['default_subreddits'],
             'crawl_type': crawl_config['default_crawl_type'],
             'days_back': crawl_config['default_days_back'],
-            'min_score': crawl_config['default_min_score']
+            'min_score': crawl_config['default_min_score'],
+            # Twitter configuration (NEW)
+            'twitter_config': {
+                'enabled': crawl_config.get('twitter_enabled', True),
+                'lookback_days': crawl_config.get('twitter_lookback_days', 7),
+                'min_engagement': crawl_config.get('twitter_min_engagement', 5),
+                'max_tweets_per_query': crawl_config.get('twitter_max_tweets_per_query', 100),
+                'api_tier': crawl_config.get('twitter_api_tier', 'basic'),
+            }
         }
 
         # Allow custom crawl parameters from request body to override saved config
@@ -188,6 +213,21 @@ def handle_trigger_crawl(event: Dict[str, Any], context: Any, headers: Dict[str,
             execution_input['days_back'] = body['days_back']
         if body.get('min_score'):
             execution_input['min_score'] = body['min_score']
+
+        # Twitter-specific overrides (NEW)
+        if body.get('twitter_lookback_days'):
+            execution_input['twitter_config']['lookback_days'] = body['twitter_lookback_days']
+        if body.get('twitter_min_engagement'):
+            execution_input['twitter_config']['min_engagement'] = body['twitter_min_engagement']
+
+        # Validate platform selection
+        if 'platforms' in body:
+            valid_platforms = ['reddit', 'twitter']
+            for platform in body['platforms']:
+                if platform not in valid_platforms:
+                    return create_response(400, {
+                        'error': f'Invalid platform: {platform}. Must be one of: {valid_platforms}'
+                    }, headers)
 
         # Start Step Functions execution with unique name
         execution_name = f"manual-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{context.aws_request_id[:8]}"
@@ -222,7 +262,7 @@ def handle_get_status(event: Dict[str, Any], context: Any, headers: Dict[str, st
         # Construct full execution ARN
         account_id = context.invoked_function_arn.split(':')[4]
         region = os.environ.get('AWS_REGION', 'us-west-2')
-        execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-reddit-insights-pipeline:{execution_name}"
+        execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-multi-source-insights-pipeline:{execution_name}"
 
         # Get execution details
         response = sfn.describe_execution(executionArn=execution_arn)
@@ -331,6 +371,7 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
         priority_max = int(query_params.get('priority_max', 10))
         category = query_params.get('category')
         user_segment = query_params.get('user_segment')
+        platform = query_params.get('platform')  # NEW: Filter by platform (reddit/twitter)
         date_from = query_params.get('date_from')
         date_to = query_params.get('date_to')
         limit = min(int(query_params.get('limit', 50)), 100)  # Max 100 items
@@ -353,6 +394,14 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
             else:
                 filter_expression = 'user_segment = :segment'
             expression_values[':segment'] = user_segment
+
+        # NEW: Platform filtering (reddit/twitter)
+        if platform:
+            if filter_expression:
+                filter_expression += ' AND source_type = :platform'
+            else:
+                filter_expression = 'source_type = :platform'
+            expression_values[':platform'] = platform
 
         # Query GSI1 for priority-based access
         query_params_dynamo = {
@@ -400,11 +449,13 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
                 'feature_summary': item.get('feature_summary', ''),
                 'feature_category': item.get('feature_category', ''),
                 'user_segment': item.get('user_segment', ''),
+                'source_type': item.get('source_type', 'reddit'),  # NEW: Platform source
                 'subreddit': item.get('subreddit', ''),
                 'analyzed_at': item.get('analyzed_at', ''),
                 'action_required': item.get('action_required', False),
                 'suggested_action': item.get('suggested_action', ''),
-                'competitors_mentioned': item.get('competitors_mentioned', [])
+                'competitors_mentioned': item.get('competitors_mentioned', []),
+                'platform_metadata': item.get('platform_metadata', {})  # NEW: Platform-specific data
             })
 
         return create_response(200, {
@@ -419,6 +470,7 @@ def handle_list_insights(event: Dict[str, Any], headers: Dict[str, str]) -> Dict
                 'priority_max': priority_max,
                 'category': category,
                 'user_segment': user_segment,
+                'platform': platform,  # NEW: Platform filter
                 'date_from': date_from,
                 'date_to': date_to
             }
@@ -1151,7 +1203,7 @@ def handle_cancel_execution(event: Dict[str, Any], headers: Dict[str, str]) -> D
             context = event.get('requestContext', {})
             account_id = context.get('accountId', '705247044519')  # fallback
 
-        execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-reddit-insights-pipeline:{execution_name}"
+        execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-multi-source-insights-pipeline:{execution_name}"
 
         # Check current execution status first
         try:
@@ -1205,7 +1257,7 @@ def handle_get_execution_logs(event: Dict[str, Any], headers: Dict[str, str]) ->
         # Get execution details first to get log group
         account_id = os.environ.get('AWS_ACCOUNT_ID', '705247044519')
         region = os.environ.get('AWS_REGION', 'us-east-1')
-        execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-reddit-insights-pipeline:{execution_name}"
+        execution_arn = f"arn:aws:states:{region}:{account_id}:execution:supio-multi-source-insights-pipeline:{execution_name}"
 
         try:
             execution_details = sfn.describe_execution(executionArn=execution_arn)

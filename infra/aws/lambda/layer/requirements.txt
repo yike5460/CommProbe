@@ -1,11 +1,14 @@
 # Reddit API
 praw>=7.7.0
 
+# Twitter/X API (4.14.1+ fixes Python 3.12 syntax warnings)
+tweepy>=4.14.1
+
 # AWS Integration (boto3 is provided by Lambda runtime, but including for local testing)
 boto3>=1.28.0
 
-# Utilities required by praw
+# Utilities required by praw and tweepy
 requests>=2.31.0
 
 # Note: Removed pandas, numpy, tqdm as they're not used in Lambda function
-# The Lambda function only uses core Python libraries and praw for Reddit access
+# The Lambda functions use core Python libraries, praw for Reddit, and tweepy for Twitter/X

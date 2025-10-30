@@ -11,7 +11,11 @@ PRIORITY_SCORE_THRESHOLD = 5
 
 def handler(event, context):
     """
-    Lambda handler for analyzing Reddit posts using Amazon Bedrock
+    Lambda handler for analyzing posts from multiple sources (Reddit + Twitter) using Amazon Bedrock
+
+    Supports both:
+    - Legacy single-source: event = {s3_location: "..."}
+    - Multi-source parallel: event = {collectionResults: [{platform: "reddit", s3_location: "..."}, ...]}
     """
     print(f"Starting analysis with event: {json.dumps(event)}")
 
@@ -20,29 +24,56 @@ def handler(event, context):
     print(f"BEDROCK_REGION environment variable: {bedrock_region}")
     print(f"Bedrock client region: {bedrock.meta.region_name}")
 
-    # Get S3 location from previous step
-    s3_location = event.get('body', {}).get('s3_location') or event.get('s3_location')
-    if not s3_location:
-        raise ValueError("No s3_location provided in event")
-    
-    # Parse S3 location
-    bucket_name = s3_location.replace('s3://', '').split('/')[0]
-    s3_key = '/'.join(s3_location.replace('s3://', '').split('/')[1:])
-    
-    # Fetch data from S3
-    response = s3.get_object(Bucket=bucket_name, Key=s3_key)
-    data = json.loads(response['Body'].read())
-    
-    posts = data.get('posts', [])
-    print(f"Analyzing {len(posts)} posts")
-    
+    # Check if this is a parallel workflow (Reddit + Twitter) or single source (legacy)
+    collection_results = event.get('collectionResults', [])
+
+    all_posts = []
+
+    if collection_results:
+        # NEW: Multi-source parallel workflow (Reddit + Twitter)
+        print(f"Processing {len(collection_results)} collection results from parallel workflow")
+
+        for result in collection_results:
+            # Extract platform and s3_location from result
+            # Step Functions wraps Lambda response in Payload
+            result_body = result.get('Payload', result)
+
+            platform = result_body.get('platform', 'unknown')
+            s3_location = result_body.get('s3_location')
+
+            if not s3_location:
+                print(f"Warning: No s3_location in result for platform {platform}, skipping")
+                continue
+
+            print(f"Loading {platform} data from {s3_location}")
+
+            # Load posts from S3 and add platform tag
+            posts = load_posts_from_s3(s3_location, platform)
+            all_posts.extend(posts)
+
+            print(f"Loaded {len(posts)} posts from {platform}")
+    else:
+        # LEGACY: Single-source workflow (backward compatible)
+        print("Using legacy single-source mode")
+        s3_location = event.get('body', {}).get('s3_location') or event.get('s3_location')
+
+        if not s3_location:
+            raise ValueError("No s3_location or collectionResults provided in event")
+
+        # Load posts with platform defaulting to 'reddit' for backward compatibility
+        posts = load_posts_from_s3(s3_location, platform='reddit')
+        all_posts.extend(posts)
+
+    print(f"Total posts to analyze: {len(all_posts)}")
+
+
     # Analyze posts in batches
     analyzed_posts = []  # High priority insights only
     all_analysis_results = []  # All analysis results for compliance/debugging
     batch_size = 10
 
-    for i in range(0, len(posts), batch_size):
-        batch = posts[i:i + batch_size]
+    for i in range(0, len(all_posts), batch_size):
+        batch = all_posts[i:i + batch_size]
         for post in batch:
             try:
                 analysis = analyze_post(post)
@@ -74,7 +105,7 @@ def handler(event, context):
         Key=filtered_analysis_key,
         Body=json.dumps({
             'analyzed_at': datetime.utcnow().isoformat(),
-            'posts_analyzed': len(posts),
+            'posts_analyzed': len(all_posts),
             'insights_generated': len(analyzed_posts),
             'insights': analyzed_posts
         }),
@@ -88,7 +119,7 @@ def handler(event, context):
         Key=full_analysis_key,
         Body=json.dumps({
             'analyzed_at': datetime.utcnow().isoformat(),
-            'posts_analyzed': len(posts),
+            'posts_analyzed': len(all_posts),
             'total_analysis_results': len(all_analysis_results),
             'high_priority_insights': len(analyzed_posts),
             'priority_threshold': PRIORITY_SCORE_THRESHOLD,
@@ -103,11 +134,64 @@ def handler(event, context):
     
     return {
         'statusCode': 200,
-        'posts_analyzed': len(posts),
+        'posts_analyzed': len(all_posts),
         'insights_generated': len(analyzed_posts),
         's3_location': f"s3://{os.environ['BUCKET_NAME']}/{filtered_analysis_key}",
         'timestamp': timestamp
     }
+
+
+def load_posts_from_s3(s3_location: str, platform: str) -> List[Dict]:
+    """
+    Load posts from S3 and convert to unified format with platform tag
+
+    Args:
+        s3_location: S3 URI (s3://bucket/key)
+        platform: Source platform ('reddit' or 'twitter')
+
+    Returns:
+        List of posts in unified format with platform field
+    """
+    # Parse S3 location
+    bucket_name = s3_location.replace('s3://', '').split('/')[0]
+    s3_key = '/'.join(s3_location.replace('s3://', '').split('/')[1:])
+
+    # Fetch data from S3
+    response = s3.get_object(Bucket=bucket_name, Key=s3_key)
+    data = json.loads(response['Body'].read())
+
+    posts = []
+
+    if platform == 'reddit':
+        # Reddit posts are already in the expected format
+        reddit_posts = data.get('posts', [])
+        for post in reddit_posts:
+            post['platform'] = 'reddit'  # Tag with platform
+            posts.append(post)
+
+    elif platform == 'twitter':
+        # Convert Twitter tweets to unified post format
+        tweets = data.get('tweets', [])
+        for tweet in tweets:
+            # Convert Twitter data structure to match Reddit format for analysis
+            posts.append({
+                'id': tweet.get('tweet_id', tweet.get('id')),
+                'platform': 'twitter',
+                'title': f"Tweet by @{tweet.get('author', {}).get('username', 'unknown')}",
+                'content': tweet.get('text', ''),
+                'author': tweet.get('author', {}).get('username', 'unknown'),
+                'url': tweet.get('url', ''),
+                'score': tweet.get('metrics', {}).get('likes', 0) + tweet.get('metrics', {}).get('retweets', 0),
+                'created_utc': tweet.get('created_at', ''),
+                'subreddit': 'twitter',  # Placeholder for compatibility
+                'num_comments': tweet.get('metrics', {}).get('replies', 0),
+                'metrics': tweet.get('metrics', {}),
+                'collected_at': tweet.get('collected_at', ''),
+                # Store original tweet data for reference
+                'twitter_data': tweet
+            })
+
+    return posts
 
 
 def analyze_post(post: Dict[str, Any]) -> Dict[str, Any]:

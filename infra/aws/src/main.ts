@@ -32,6 +32,25 @@ export class LegalCrawlerStack extends Stack {
     }
 
     // ===========================================
+    // Get Twitter/X API credentials from context
+    // ===========================================
+    const twitterBearerToken = this.node.tryGetContext('twitterBearerToken');
+    const twitterApiKey = this.node.tryGetContext('twitterApiKey');
+    const twitterApiSecret = this.node.tryGetContext('twitterApiSecret');
+
+    // Twitter is optional - can deploy without Twitter enabled
+    if (!twitterBearerToken) {
+      console.warn(
+        '⚠️  Twitter API credentials not provided. Twitter collection will be disabled.\n' +
+        'To enable Twitter, provide credentials using:\n' +
+        'npx cdk deploy \\\n' +
+        '  --context redditClientId=iPH6UMuXs_0pFWYBHi8gOg \\\n' +
+        '  --context redditClientSecret=K6LYsuo4BTkP_ILb2GpE_45dBQ6PqA \\\n' +
+        '  --context twitterBearerToken=YOUR_TWITTER_BEARER_TOKEN'
+      );
+    }
+
+    // ===========================================
     // S3 Buckets
     // ===========================================
     const rawDataBucket = new s3.Bucket(this, 'RawDataBucket', {
@@ -125,8 +144,8 @@ export class LegalCrawlerStack extends Stack {
     // ===========================================
     // Lambda Functions
     // ===========================================
-    
-    // Collector Lambda
+
+    // Reddit Collector Lambda
     const collectorFunction = new lambda.Function(this, 'CollectorFunction', {
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/collector')),
@@ -143,8 +162,28 @@ export class LegalCrawlerStack extends Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
-    // Grant S3 permissions to collector
+    // Grant S3 permissions to Reddit collector
     rawDataBucket.grantReadWrite(collectorFunction);
+
+    // Twitter/X Collector Lambda
+    const twitterCollectorFunction = new lambda.Function(this, 'TwitterCollectorFunction', {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/collector/twitter')),
+      handler: 'index.handler',
+      timeout: Duration.minutes(15),
+      memorySize: 1024,
+      environment: {
+        BUCKET_NAME: rawDataBucket.bucketName,
+        TWITTER_BEARER_TOKEN: twitterBearerToken || 'DISABLED',
+        TWITTER_API_KEY: twitterApiKey || 'DISABLED',
+        TWITTER_API_SECRET: twitterApiSecret || 'DISABLED',
+      },
+      layers: [dependenciesLayer],
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant S3 permissions to Twitter collector
+    rawDataBucket.grantReadWrite(twitterCollectorFunction);
 
     // Analyzer Lambda (Bedrock integration)
     const analyzerFunction = new lambda.Function(this, 'AnalyzerFunction', {
@@ -203,10 +242,16 @@ export class LegalCrawlerStack extends Stack {
     // ===========================================
     // Step Functions State Machine
     // ===========================================
-    
-    // Task definitions
-    const collectTask = new sfnTasks.LambdaInvoke(this, 'CollectPosts', {
+
+    // Task definitions for Reddit collection
+    const collectRedditTask = new sfnTasks.LambdaInvoke(this, 'CollectRedditPosts', {
       lambdaFunction: collectorFunction,
+      outputPath: '$.Payload',
+    });
+
+    // Task definitions for Twitter collection
+    const collectTwitterTask = new sfnTasks.LambdaInvoke(this, 'CollectTwitterPosts', {
+      lambdaFunction: twitterCollectorFunction,
       outputPath: '$.Payload',
     });
 
@@ -220,16 +265,26 @@ export class LegalCrawlerStack extends Stack {
       outputPath: '$.Payload',
     });
 
-    // Chain the tasks
-    const definition = collectTask
+    // Create parallel collection state for Reddit + Twitter
+    const parallelCollection = new sfn.Parallel(this, 'ParallelCollection', {
+      comment: 'Collect from Reddit and Twitter in parallel',
+      resultPath: '$.collectionResults',
+    });
+
+    // Add both collection branches
+    parallelCollection.branch(collectRedditTask);
+    parallelCollection.branch(collectTwitterTask);
+
+    // Chain: Parallel collection -> Analyze -> Store
+    const definition = parallelCollection
       .next(analyzeTask)
       .next(storeTask);
 
     // Create state machine
-    const stateMachine = new sfn.StateMachine(this, 'RedditInsightsPipeline', {
+    const stateMachine = new sfn.StateMachine(this, 'MultiSourceInsightsPipeline', {
       definition,
       timeout: Duration.hours(1),
-      stateMachineName: 'supio-reddit-insights-pipeline',
+      stateMachineName: 'supio-multi-source-insights-pipeline',
       logs: {
         destination: new logs.LogGroup(this, 'StateMachineLogGroup', {
           retention: logs.RetentionDays.ONE_WEEK,
@@ -241,11 +296,11 @@ export class LegalCrawlerStack extends Stack {
     // ===========================================
     // EventBridge Scheduling
     // ===========================================
-    
-    // Weekly schedule for Reddit collection
-    new events.Rule(this, 'WeeklyRedditCollection', {
-      ruleName: 'supio-weekly-reddit-insights',
-      description: 'Trigger Reddit collection every Monday morning',
+
+    // Weekly schedule for multi-source (Reddit + Twitter) collection
+    new events.Rule(this, 'WeeklyMultiSourceCollection', {
+      ruleName: 'supio-weekly-multi-source-insights',
+      description: 'Trigger Reddit and Twitter collection every Monday morning',
       schedule: events.Schedule.cron({
         minute: '0',
         hour: '2',
@@ -318,6 +373,24 @@ def handler(event, context):
     // Grant permissions to API function
     stateMachine.grantStartExecution(apiFunction);
     stateMachine.grantRead(apiFunction);
+
+    // Grant explicit Step Functions execution management permissions
+    // Note: Execution ARN pattern is different from state machine ARN pattern
+    // State machine: arn:aws:states:REGION:ACCOUNT:stateMachine:NAME
+    // Execution:      arn:aws:states:REGION:ACCOUNT:execution:NAME:EXECUTION_ID
+    const executionArnPattern = stateMachine.stateMachineArn.replace(':stateMachine:', ':execution:') + ':*';
+
+    apiFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'states:DescribeExecution',
+        'states:StopExecution',
+        'states:GetExecutionHistory',
+      ],
+      resources: [
+        executionArnPattern, // All executions of this state machine
+      ],
+    }));
 
     // Grant DynamoDB read permissions for insights endpoints
     insightsTable.grantReadData(apiFunction);
@@ -438,7 +511,7 @@ def handler(event, context):
 // for development, use account/region from cdk cli
 const devEnv = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
-  region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
+  region: 'us-west-2',
 };
 
 const app = new App();

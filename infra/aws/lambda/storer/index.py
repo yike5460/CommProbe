@@ -82,11 +82,16 @@ def handler(event, context):
 def create_dynamodb_item(post: Dict[str, Any], analysis: Dict[str, Any]) -> Dict:
     """
     Create a DynamoDB item from post and analysis data
+
+    Supports both Reddit and Twitter platforms with unified schema
     """
     current_date = datetime.utcnow().strftime('%Y-%m-%d')
     current_time = int(time.time())
     ttl_time = current_time + (90 * 24 * 60 * 60)  # 90 days TTL
-    
+
+    # Get platform from post (defaults to 'reddit' for backward compatibility)
+    platform = post.get('platform', 'reddit')
+
     item = {
         # Primary Key
         'PK': f"INSIGHT-{current_date}",
@@ -95,11 +100,12 @@ def create_dynamodb_item(post: Dict[str, Any], analysis: Dict[str, Any]) -> Dict
         # GSI Keys
         'GSI1PK': 'PRIORITY',
         'GSI1SK': f"SCORE-{analysis['priority_score']}-DATE-{current_date}",
-        
+
         # Core Attributes
         'post_id': post['id'],
         'timestamp': current_time,
-        'subreddit': post['subreddit'],
+        'source_type': platform,  # NEW: Track platform source (reddit/twitter)
+        'subreddit': post.get('subreddit', 'N/A'),  # For Reddit or placeholder for Twitter
         'post_url': post['url'],
         'ttl': ttl_time,
         
@@ -132,10 +138,34 @@ def create_dynamodb_item(post: Dict[str, Any], analysis: Dict[str, Any]) -> Dict
         'post_score': post.get('score', 0),
         'num_comments': post.get('num_comments', 0)
     }
-    
+
+    # Add platform-specific metadata
+    if platform == 'reddit':
+        item['platform_metadata'] = {
+            'subreddit': post.get('subreddit', 'unknown'),
+            'post_score': post.get('score', 0),
+            'upvote_ratio': post.get('upvote_ratio'),
+            'flair': post.get('flair'),
+        }
+    elif platform == 'twitter':
+        # Twitter-specific metadata
+        metrics = post.get('metrics', {})
+        twitter_data = post.get('twitter_data', {})
+        item['platform_metadata'] = {
+            'tweet_id': post.get('id'),
+            'author_username': post.get('author', 'unknown'),
+            'likes': metrics.get('likes', 0),
+            'retweets': metrics.get('retweets', 0),
+            'replies': metrics.get('replies', 0),
+            'quotes': metrics.get('quotes', 0),
+            'engagement_score': post.get('score', 0),  # Combined likes + retweets
+            'conversation_id': twitter_data.get('conversation_id'),
+            'language': twitter_data.get('lang'),
+        }
+
     # Clean up empty strings and None values
     item = {k: v for k, v in item.items() if v is not None and v != ''}
-    
+
     return item
 
 

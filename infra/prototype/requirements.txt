@@ -23,3 +23,6 @@ pytest-cov>=4.1.0
 # Type checking
 mypy>=1.5.0
 types-requests>=2.31.0
+
+# Twitter API Prototype Requirements
+tweepy==4.14.0
