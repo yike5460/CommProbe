@@ -274,7 +274,397 @@ export const MetricsCard: React.FC<MetricsCardProps> = ({
 };
 ```
 
-### 3. Filter & Search Components
+### 3. Platform Components (NEW - Twitter Integration)
+
+#### PlatformFilter
+**Purpose:** Dropdown component for filtering insights and analytics by platform (Reddit, Twitter, or All).
+
+```tsx
+// components/platform/PlatformFilter.tsx
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MessageSquare, Twitter, Layers } from 'lucide-react';
+
+export type PlatformValue = 'all' | 'reddit' | 'twitter';
+
+interface PlatformFilterProps {
+  value: PlatformValue;
+  onChange: (value: PlatformValue) => void;
+  className?: string;
+  disabled?: boolean;
+}
+
+export const PlatformFilter: React.FC<PlatformFilterProps> = ({
+  value,
+  onChange,
+  className,
+  disabled = false
+}) => {
+  return (
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger className={cn("w-[180px]", className)}>
+        <SelectValue placeholder="All Platforms" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            All Platforms
+          </div>
+        </SelectItem>
+        <SelectItem value="reddit">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-[#ff4500]" />
+            Reddit Only
+          </div>
+        </SelectItem>
+        <SelectItem value="twitter">
+          <div className="flex items-center gap-2">
+            <Twitter className="h-4 w-4 text-[#1da1f2]" />
+            Twitter Only
+          </div>
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+};
+```
+
+**Usage:**
+```tsx
+const [platform, setPlatform] = useState<PlatformValue>('all');
+
+<PlatformFilter value={platform} onChange={setPlatform} />
+```
+
+---
+
+#### PlatformBadge
+**Purpose:** Visual indicator showing the source platform of an insight.
+
+```tsx
+// components/platform/PlatformBadge.tsx
+import { Badge } from '@/components/ui/badge';
+import { MessageSquare, Twitter } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+export type Platform = 'reddit' | 'twitter';
+
+interface PlatformBadgeProps {
+  platform: Platform;
+  size?: 'sm' | 'md' | 'lg';
+  showIcon?: boolean;
+  showText?: boolean;
+  className?: string;
+}
+
+export const PlatformBadge: React.FC<PlatformBadgeProps> = ({
+  platform,
+  size = 'md',
+  showIcon = true,
+  showText = true,
+  className
+}) => {
+  const config = {
+    reddit: {
+      icon: MessageSquare,
+      label: 'Reddit',
+      className: 'bg-[#fef2f2] text-[#991b1b] border-[#fecaca]',
+    },
+    twitter: {
+      icon: Twitter,
+      label: 'Twitter',
+      className: 'bg-[#eff6ff] text-[#1e40af] border-[#bfdbfe]',
+    },
+  };
+
+  const platformConfig = config[platform];
+  const Icon = platformConfig.icon;
+
+  const sizeClasses = {
+    sm: 'text-xs px-1.5 py-0.5',
+    md: 'text-sm px-2 py-1',
+    lg: 'text-base px-3 py-1.5',
+  };
+
+  const iconSizes = {
+    sm: 'h-3 w-3',
+    md: 'h-4 w-4',
+    lg: 'h-5 w-5',
+  };
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        platformConfig.className,
+        sizeClasses[size],
+        'inline-flex items-center gap-1.5',
+        className
+      )}
+    >
+      {showIcon && <Icon className={iconSizes[size]} />}
+      {showText && platformConfig.label}
+    </Badge>
+  );
+};
+```
+
+**Usage:**
+```tsx
+// Different sizes
+<PlatformBadge platform="reddit" size="sm" />
+<PlatformBadge platform="twitter" size="md" />
+<PlatformBadge platform="reddit" size="lg" />
+
+// Icon only
+<PlatformBadge platform="twitter" showText={false} />
+
+// Text only
+<PlatformBadge platform="reddit" showIcon={false} />
+```
+
+---
+
+#### TwitterContextView
+**Purpose:** Display Twitter-specific metadata for insights from Twitter.
+
+```tsx
+// components/insights/TwitterContextView.tsx
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExternalLink, Heart, Repeat2, MessageCircle, Quote } from 'lucide-react';
+
+interface TwitterContextViewProps {
+  tweetId: string;
+  authorUsername: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  quotes: number;
+  engagementScore: number;
+  tweetUrl: string;
+  language?: string;
+}
+
+export const TwitterContextView: React.FC<TwitterContextViewProps> = ({
+  tweetId,
+  authorUsername,
+  likes,
+  retweets,
+  replies,
+  quotes,
+  engagementScore,
+  tweetUrl,
+  language = 'en'
+}) => {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium">Twitter Context</CardTitle>
+          <a
+            href={tweetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+          >
+            View on Twitter
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Author Info */}
+        <div>
+          <p className="text-sm text-neutral-600">Posted by</p>
+          <a
+            href={`https://twitter.com/${authorUsername}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-base font-medium text-blue-600 hover:underline"
+          >
+            @{authorUsername}
+          </a>
+        </div>
+
+        {/* Engagement Metrics */}
+        <div>
+          <p className="text-sm text-neutral-600 mb-2">Engagement Metrics</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-red-500" />
+              <span className="text-sm">{likes.toLocaleString()} likes</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Repeat2 className="h-4 w-4 text-green-500" />
+              <span className="text-sm">{retweets.toLocaleString()} retweets</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-blue-500" />
+              <span className="text-sm">{replies.toLocaleString()} replies</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Quote className="h-4 w-4 text-purple-500" />
+              <span className="text-sm">{quotes.toLocaleString()} quotes</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Engagement Score */}
+        <div>
+          <p className="text-sm text-neutral-600">Total Engagement</p>
+          <p className="text-2xl font-bold text-blue-600">{engagementScore.toLocaleString()}</p>
+        </div>
+
+        {/* Metadata */}
+        <div className="flex gap-2">
+          <Badge variant="outline">Tweet ID: {tweetId}</Badge>
+          {language && <Badge variant="outline">{language.toUpperCase()}</Badge>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+```
+
+---
+
+#### TwitterConfigSection
+**Purpose:** Configuration panel for Twitter settings in the /config page.
+
+```tsx
+// components/config/TwitterConfigSection.tsx
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Twitter, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+interface TwitterConfigSectionProps {
+  config: {
+    twitter_enabled: boolean;
+    twitter_lookback_days: number;
+    twitter_min_engagement: number;
+    twitter_api_tier: 'free' | 'basic' | 'pro';
+  };
+  onChange: (updates: Partial<typeof config>) => void;
+  isLoading?: boolean;
+}
+
+export const TwitterConfigSection: React.FC<TwitterConfigSectionProps> = ({
+  config,
+  onChange,
+  isLoading = false
+}) => {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Twitter className="h-5 w-5 text-[#1da1f2]" />
+            <CardTitle>Twitter (X) Settings</CardTitle>
+          </div>
+          <Badge variant={config.twitter_enabled ? "default" : "secondary"}>
+            {config.twitter_enabled ? 'Enabled' : 'Disabled'}
+          </Badge>
+        </div>
+        <CardDescription>
+          Configure Twitter data collection and search parameters
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        {/* Enable/Disable Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>Enable Twitter Collection</Label>
+            <p className="text-sm text-neutral-500">
+              Collect insights from Twitter/X platform
+            </p>
+          </div>
+          <Switch
+            checked={config.twitter_enabled}
+            onCheckedChange={(checked) => onChange({ twitter_enabled: checked })}
+            disabled={isLoading}
+          />
+        </div>
+
+        {/* API Tier Indicator */}
+        {config.twitter_enabled && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Current API Tier: <strong>{config.twitter_api_tier}</strong>
+              {config.twitter_api_tier === 'basic' && ' ($200/month, 15,000 posts)'}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Lookback Days */}
+        <div className="space-y-2">
+          <Label htmlFor="twitter-lookback">Lookback Days</Label>
+          <Input
+            id="twitter-lookback"
+            type="number"
+            min={1}
+            max={14}
+            value={config.twitter_lookback_days}
+            onChange={(e) => onChange({ twitter_lookback_days: parseInt(e.target.value) })}
+            disabled={!config.twitter_enabled || isLoading}
+          />
+          <p className="text-xs text-neutral-500">
+            Number of days to look back for Twitter data (1-14 days)
+          </p>
+        </div>
+
+        {/* Minimum Engagement */}
+        <div className="space-y-2">
+          <Label htmlFor="twitter-engagement">Minimum Engagement</Label>
+          <Input
+            id="twitter-engagement"
+            type="number"
+            min={0}
+            max={100}
+            value={config.twitter_min_engagement}
+            onChange={(e) => onChange({ twitter_min_engagement: parseInt(e.target.value) })}
+            disabled={!config.twitter_enabled || isLoading}
+          />
+          <p className="text-xs text-neutral-500">
+            Minimum total likes + retweets to collect tweet (default: 5)
+          </p>
+        </div>
+
+        {/* API Tier Display */}
+        <div className="space-y-2">
+          <Label>API Tier</Label>
+          <Select
+            value={config.twitter_api_tier}
+            onValueChange={(value) => onChange({ twitter_api_tier: value as any })}
+            disabled={!config.twitter_enabled || isLoading}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="free">Free (100 posts/month)</SelectItem>
+              <SelectItem value="basic">Basic ($200/month, 15K posts)</SelectItem>
+              <SelectItem value="pro">Pro ($5K/month, 1M posts)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+```
+
+---
+
+### 4. Filter & Search Components
 
 #### InsightsFilters
 ```tsx

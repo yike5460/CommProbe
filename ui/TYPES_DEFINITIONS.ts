@@ -11,12 +11,25 @@
 // API Request/Response Types
 // ================================
 
+// Platform Types (NEW - Twitter Integration)
+export type Platform = 'reddit' | 'twitter';
+
 // Crawl Trigger Types
 export interface CrawlTriggerRequest {
+  platforms?: Platform[];  // NEW: Platform selection (default: both)
   subreddits?: string[];
   crawl_type?: 'crawl' | 'search' | 'both';
   days_back?: number;
   min_score?: number;
+  twitter_config?: TwitterConfig;  // NEW: Twitter-specific configuration
+}
+
+// Twitter Configuration (NEW)
+export interface TwitterConfig {
+  lookback_days?: number;
+  min_engagement?: number;
+  api_tier?: 'free' | 'basic' | 'pro';
+  max_tweets_per_query?: number;
 }
 
 export interface CrawlTriggerResponse {
@@ -72,6 +85,7 @@ export interface ExecutionSummary {
 
 // Insights Types
 export interface InsightsListParams {
+  platform?: Platform;  // NEW: Filter by platform
   priority_min?: number;
   priority_max?: number;
   category?: FeatureCategory;
@@ -89,6 +103,7 @@ export interface InsightsListResponse {
     hasMore: boolean;
   };
   filters: {
+    platform?: Platform;  // NEW: Platform filter
     priority_min?: number;
     priority_max?: number;
     category?: string;
@@ -105,11 +120,13 @@ export interface InsightSummary {
   feature_summary: string;
   feature_category: FeatureCategory;
   user_segment: UserSegment;
-  subreddit: string;
+  source_type: Platform;  // NEW: Platform source
+  subreddit?: string;  // Optional: Only for Reddit
   analyzed_at: string;
   action_required: boolean;
   suggested_action: string;
   competitors_mentioned: string[];
+  platform_metadata?: PlatformMetadata;  // NEW: Platform-specific data
 }
 
 export interface InsightDetailsResponse {
@@ -120,7 +137,8 @@ export interface InsightDetails {
   insight_id: string;
   post_id: string;
   post_url: string;
-  subreddit: string;
+  source_type: Platform;  // NEW: Platform source
+  subreddit?: string;  // Optional: Only for Reddit
   timestamp: number;
   analyzed_at: string;
   collected_at: string;
@@ -146,13 +164,39 @@ export interface InsightDetails {
   suggested_action: string;
   pain_points: string[];
 
-  // Post Metadata
+  // Post Metadata (Reddit-specific, optional)
+  post_score?: number;
+  num_comments?: number;
+
+  // Platform Metadata (NEW)
+  platform_metadata?: PlatformMetadata;
+}
+
+// Platform Metadata Types (NEW - Twitter Integration)
+export type PlatformMetadata = RedditMetadata | TwitterMetadata;
+
+export interface RedditMetadata {
+  subreddit: string;
   post_score: number;
-  num_comments: number;
+  upvote_ratio: number;
+  flair?: string;
+}
+
+export interface TwitterMetadata {
+  tweet_id: string;
+  author_username: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  quotes: number;
+  engagement_score: number;
+  conversation_id: string;
+  language: string;
 }
 
 // Analytics Types
 export interface AnalyticsParams {
+  platform?: Platform;  // NEW: Filter by platform
   period?: '7d' | '30d' | '90d';
   group_by?: string;
 }
@@ -279,6 +323,12 @@ export interface SystemConfigurationResponse {
     default_days_back: number;
     default_min_score: number;
     max_posts_per_crawl: number;
+    // Twitter settings (NEW)
+    twitter_enabled?: boolean;
+    twitter_lookback_days?: number;
+    twitter_min_engagement?: number;
+    twitter_api_tier?: 'free' | 'basic' | 'pro';
+    twitter_search_queries?: string[];
   };
   analysis_settings: {
     priority_threshold: number;
@@ -509,6 +559,47 @@ export interface InsightDetailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onExport?: (insight: InsightDetails) => void;
+}
+
+// Platform Component Props (NEW - Twitter Integration)
+export type PlatformValue = 'all' | 'reddit' | 'twitter';
+
+export interface PlatformFilterProps {
+  value: PlatformValue;
+  onChange: (value: PlatformValue) => void;
+  className?: string;
+  disabled?: boolean;
+}
+
+export interface PlatformBadgeProps {
+  platform: Platform;
+  size?: 'sm' | 'md' | 'lg';
+  showIcon?: boolean;
+  showText?: boolean;
+  className?: string;
+}
+
+export interface TwitterContextViewProps {
+  tweetId: string;
+  authorUsername: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  quotes: number;
+  engagementScore: number;
+  tweetUrl: string;
+  language?: string;
+}
+
+export interface TwitterConfigSectionProps {
+  config: {
+    twitter_enabled: boolean;
+    twitter_lookback_days: number;
+    twitter_min_engagement: number;
+    twitter_api_tier: 'free' | 'basic' | 'pro';
+  };
+  onChange: (updates: Partial<TwitterConfigSectionProps['config']>) => void;
+  isLoading?: boolean;
 }
 
 // ================================

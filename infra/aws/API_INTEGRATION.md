@@ -1,19 +1,24 @@
-# Reddit Crawler API Integration Guide
+# Multi-Source Legal Tech Intelligence API Integration Guide
 
 ## Overview
 
-The Reddit Crawler API provides REST endpoints for triggering and monitoring Reddit data collection jobs. This API is designed to be consumed by the Cloudflare Workers API Gateway.
+The Legal Tech Intelligence API provides REST endpoints for triggering and monitoring data collection from **multiple sources** (Reddit and Twitter/X). The API supports parallel collection, platform filtering, and unified analytics across all platforms. This API is designed to be consumed by the Cloudflare Workers API Gateway and the Next.js frontend.
 
 ## Architecture
 
 The API is implemented as a dedicated AWS Lambda function (`/infra/aws/lambda/api/index.py`) that integrates with:
-- **AWS Step Functions** to orchestrate the Reddit crawling pipeline
-- **DynamoDB** to read insights and manage system configuration
+- **AWS Step Functions** to orchestrate parallel multi-source collection pipeline (Reddit + Twitter)
+- **DynamoDB** to read insights, manage system configuration, and track platform sources
 - **CloudWatch** for execution logs and monitoring
+- **Twitter API v2** via Tweepy for Twitter data collection
+- **Reddit API** via PRAW for Reddit data collection
 
 **Key Features:**
 - Single Lambda function handles all 14 REST endpoints
-- Python 3.12 runtime with shared dependencies layer
+- **Multi-platform support**: Collect from Reddit and Twitter in parallel
+- **Platform filtering**: Filter insights and analytics by source platform
+- **Platform metadata**: Track platform-specific metrics (Reddit scores, Twitter engagement)
+- Python 3.12 runtime with shared dependencies layer (tweepy + praw)
 - Configuration persistence in DynamoDB `supio-system-config` table
 - Default configuration values with override capability
 - Comprehensive error handling and CORS support
@@ -59,20 +64,55 @@ Get API information and available endpoints.
     "GET /health": "System health check"
   },
   "trigger_parameters": {
+    "platforms": "array of platforms: reddit, twitter (optional, default: both)",
     "subreddits": "array of subreddit names (optional)",
     "crawl_type": "crawl, search, or both (optional)",
-    "days_back": "number of days to look back (optional)"
+    "days_back": "number of days to look back (optional)",
+    "twitter_config": "Twitter-specific configuration (optional)"
   }
 }
 ```
 
-### 2. POST /trigger - Start New Crawl Job
-Trigger a new Reddit crawling job with optional parameters.
+### 2. POST /trigger - Start New Collection Job
+Trigger a new data collection job from Reddit, Twitter, or both platforms with optional parameters.
 
-**Request Body (Optional):**
+**Platform Selection:**
+- Omit `platforms` to collect from **both** Reddit and Twitter (default)
+- Specify `platforms: ["reddit"]` for Reddit-only collection
+- Specify `platforms: ["twitter"]` for Twitter-only collection
+
+**Request Body Examples:**
+
+**Example 1: Multi-Platform Collection (Reddit + Twitter)**
 ```json
 {
-  "subreddits": ["LawFirm", "Lawyertalk", "legaltech", "legaltechAI"],
+  "platforms": ["reddit", "twitter"],
+  "subreddits": ["LawFirm", "Lawyertalk", "legaltech"],
+  "crawl_type": "both",
+  "days_back": 3,
+  "twitter_config": {
+    "lookback_days": 7,
+    "min_engagement": 5,
+    "api_tier": "basic"
+  }
+}
+```
+
+**Example 2: Twitter-Only Collection**
+```json
+{
+  "platforms": ["twitter"],
+  "twitter_config": {
+    "lookback_days": 7,
+    "min_engagement": 10
+  }
+}
+```
+
+**Example 3: Reddit-Only Collection (Legacy Format)**
+```json
+{
+  "subreddits": ["LawFirm", "Lawyertalk"],
   "crawl_type": "both",
   "days_back": 3
 }
@@ -148,9 +188,10 @@ Get a list of the 10 most recent crawl job executions.
 ```
 
 ### 5. GET /insights - List Insights with Filtering
-Get filtered list of insights with pagination and analytics.
+Get filtered list of insights with pagination and analytics. Supports filtering by platform (Reddit, Twitter, or both).
 
 **Query Parameters:**
+- `platform` (optional): Filter by platform ("reddit" | "twitter" | omit for both)
 - `priority_min` (optional): Minimum priority score (default: 0)
 - `priority_max` (optional): Maximum priority score (default: 10)
 - `category` (optional): Filter by feature category
@@ -158,6 +199,18 @@ Get filtered list of insights with pagination and analytics.
 - `date_from` (optional): Start date filter (YYYY-MM-DD)
 - `date_to` (optional): End date filter (YYYY-MM-DD)
 - `limit` (optional): Number of results to return (default: 50, max: 100)
+
+**Platform Filtering Examples:**
+```bash
+# Get Twitter insights only
+GET /insights?platform=twitter&limit=10
+
+# Get Reddit insights only
+GET /insights?platform=reddit&limit=10
+
+# Get all insights (both platforms)
+GET /insights?limit=10
+```
 
 **Response:**
 ```json
@@ -170,11 +223,42 @@ Get filtered list of insights with pagination and analytics.
       "feature_summary": "Medical records chronology automation for personal injury cases",
       "feature_category": "medical_records_processing",
       "user_segment": "small_pi_firm",
+      "source_type": "reddit",
       "subreddit": "LawFirm",
       "analyzed_at": "2025-09-23T17:44:42.643935",
       "action_required": true,
       "suggested_action": "Evaluate medical chronology automation for Q1 2026 roadmap",
-      "competitors_mentioned": ["EvenUp", "Eve"]
+      "competitors_mentioned": ["EvenUp", "Eve"],
+      "platform_metadata": {
+        "subreddit": "LawFirm",
+        "post_score": 45,
+        "upvote_ratio": 0.95,
+        "flair": "Discussion"
+      }
+    },
+    {
+      "insight_id": "INSIGHT-2025-09-24-PRIORITY-9-ID-abc123",
+      "post_id": "1234567890",
+      "priority_score": 9,
+      "feature_summary": "PI attorneys need faster medical record processing than EvenUp",
+      "feature_category": "medical_records_processing",
+      "user_segment": "small_pi_firm",
+      "source_type": "twitter",
+      "analyzed_at": "2025-09-24T10:30:00.000000",
+      "action_required": true,
+      "suggested_action": "Emphasize speed advantage over EvenUp in marketing",
+      "competitors_mentioned": ["EvenUp"],
+      "platform_metadata": {
+        "tweet_id": "1234567890",
+        "author_username": "pi_attorney_jane",
+        "likes": 28,
+        "retweets": 12,
+        "replies": 5,
+        "quotes": 2,
+        "engagement_score": 40,
+        "conversation_id": "1234567890",
+        "language": "en"
+      }
     }
   ],
   "pagination": {
@@ -183,6 +267,7 @@ Get filtered list of insights with pagination and analytics.
     "hasMore": false
   },
   "filters": {
+    "platform": null,
     "priority_min": 5,
     "priority_max": 10,
     "category": "document_automation",
@@ -192,6 +277,12 @@ Get filtered list of insights with pagination and analytics.
   }
 }
 ```
+
+**New Fields in Response:**
+- `source_type`: Platform source ("reddit" | "twitter")
+- `platform_metadata`: Platform-specific data object
+  - **For Reddit**: `subreddit`, `post_score`, `upvote_ratio`, `flair`
+  - **For Twitter**: `tweet_id`, `author_username`, `likes`, `retweets`, `replies`, `quotes`, `engagement_score`, `conversation_id`, `language`
 
 ### 6. GET /insights/{insightId} - Get Single Insight Details
 Get detailed information for a specific insight including full post content.
@@ -227,11 +318,24 @@ Get detailed information for a specific insight including full post content.
 ```
 
 ### 7. GET /analytics/summary - Analytics Dashboard Data
-Get aggregated analytics for dashboard and reporting.
+Get aggregated analytics for dashboard and reporting. Supports filtering by platform to analyze Reddit or Twitter data separately.
 
 **Query Parameters:**
+- `platform` (optional): Filter by platform ("reddit" | "twitter" | omit for both)
 - `period` (optional): Time period (7d, 30d, 90d) (default: 7d)
 - `group_by` (optional): Comma-separated list of grouping fields (category, user_segment)
+
+**Platform Filtering Examples:**
+```bash
+# Get Twitter-only analytics
+GET /analytics/summary?platform=twitter&period=7d
+
+# Get Reddit-only analytics
+GET /analytics/summary?platform=reddit&period=30d
+
+# Get combined analytics (both platforms)
+GET /analytics/summary?period=7d
+```
 
 **Response:**
 ```json
@@ -311,7 +415,16 @@ Get current system configuration settings including crawl parameters, analysis s
     "default_crawl_type": "both",
     "default_days_back": 3,
     "default_min_score": 10,
-    "max_posts_per_crawl": 500
+    "max_posts_per_crawl": 500,
+    "twitter_enabled": true,
+    "twitter_lookback_days": 7,
+    "twitter_min_engagement": 5,
+    "twitter_api_tier": "basic",
+    "twitter_search_queries": [
+      "legaltech OR (legal tech) OR #legaltech",
+      "(personal injury attorney) OR (PI attorney) OR #PIlaw",
+      "Supio OR EvenUp OR Eve medical records"
+    ]
   },
   "analysis_settings": {
     "priority_threshold": 5,
@@ -332,6 +445,13 @@ Get current system configuration settings including crawl parameters, analysis s
   }
 }
 ```
+
+**New Twitter Configuration Fields:**
+- `twitter_enabled`: Enable/disable Twitter collection (boolean)
+- `twitter_lookback_days`: Days to look back for Twitter collection (number, default: 7)
+- `twitter_min_engagement`: Minimum likes + retweets threshold (number, default: 5)
+- `twitter_api_tier`: Twitter API tier ("free" | "basic" | "pro", default: "basic")
+- `twitter_search_queries`: Array of Twitter search queries (array of strings)
 
 **Default Values (Hardcoded in Lambda):**
 - These defaults are returned if no configuration is saved in DynamoDB
@@ -641,16 +761,85 @@ Get detailed execution logs for debugging, troubleshooting, and operational visi
 }
 ```
 
+## Multi-Platform Support
+
+### Platform Architecture
+
+The API supports collecting and analyzing data from multiple platforms simultaneously:
+
+1. **Parallel Collection**: Reddit and Twitter collectors run in parallel via Step Functions
+2. **Unified Format**: All platforms convert to unified data format for analysis
+3. **Platform Tracking**: Each insight tagged with `source_type` field
+4. **Platform Filtering**: Filter insights and analytics by platform
+
+### Platform-Specific Behavior
+
+**Reddit:**
+- Uses PRAW (Python Reddit API Wrapper)
+- Collects from specified subreddits
+- Tracks: post_score, upvote_ratio, subreddit, flair
+- Rate limit: Reddit API limits (varies by app)
+
+**Twitter:**
+- Uses Tweepy (Twitter API v2 client)
+- Searches by queries (keywords, hashtags, mentions)
+- Tracks: likes, retweets, replies, quotes, engagement_score
+- Rate limit: Tier-dependent (Basic: 15 requests per 15 minutes)
+- Timeout handling: Stops gracefully before Lambda timeout
+
+### Data Flow
+
+```
+POST /trigger {"platforms": ["reddit", "twitter"]}
+    ↓
+Step Functions: Parallel State
+    ├─→ Reddit Collector Lambda
+    └─→ Twitter Collector Lambda
+        ↓
+    Analyzer Lambda (processes both)
+        ↓
+    Storer Lambda (tags with source_type)
+        ↓
+    DynamoDB (insights with platform metadata)
+        ↓
+GET /insights?platform=twitter
+```
+
+### Platform Filtering Best Practices
+
+**When to filter by platform:**
+- Comparing Reddit vs Twitter engagement
+- Platform-specific analytics
+- Troubleshooting collection issues
+- Understanding source distribution
+
+**When to use combined view:**
+- Overall market intelligence
+- Comprehensive competitor analysis
+- Trend analysis across all channels
+- Total insight counts
+
 ## Cloudflare Workers Integration Example
 
 Here's how to integrate this API into your Cloudflare Workers:
 
 ```typescript
 // types/crawler.ts
+export type Platform = 'reddit' | 'twitter';
+
 export interface CrawlTriggerRequest {
+  platforms?: Platform[];  // New: Platform selection (default: both)
   subreddits?: string[];
   crawl_type?: 'crawl' | 'search' | 'both';
   days_back?: number;
+  twitter_config?: TwitterConfig;  // New: Twitter-specific config
+}
+
+export interface TwitterConfig {
+  lookback_days?: number;
+  min_engagement?: number;
+  api_tier?: 'free' | 'basic' | 'pro';
+  max_tweets_per_query?: number;
 }
 
 export interface CrawlTriggerResponse {
@@ -694,11 +883,32 @@ export interface InsightSummary {
   feature_summary: string;
   feature_category: string;
   user_segment: string;
-  subreddit: string;
+  source_type: Platform;  // New: Platform source
+  subreddit?: string;  // Optional: Only for Reddit
   analyzed_at: string;
   action_required: boolean;
   suggested_action: string;
   competitors_mentioned: string[];
+  platform_metadata?: RedditMetadata | TwitterMetadata;  // New: Platform-specific data
+}
+
+export interface RedditMetadata {
+  subreddit: string;
+  post_score: number;
+  upvote_ratio: number;
+  flair?: string;
+}
+
+export interface TwitterMetadata {
+  tweet_id: string;
+  author_username: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  quotes: number;
+  engagement_score: number;
+  conversation_id: string;
+  language: string;
 }
 
 export interface InsightDetailsResponse {
@@ -709,7 +919,8 @@ export interface InsightDetails {
   insight_id: string;
   post_id: string;
   post_url: string;
-  subreddit: string;
+  source_type: Platform;  // New: Platform source
+  subreddit?: string;  // Optional: Only for Reddit
   timestamp: number;
   analyzed_at: string;
   collected_at: string;
@@ -726,8 +937,9 @@ export interface InsightDetails {
   action_required: boolean;
   suggested_action: string;
   pain_points: string[];
-  post_score: number;
-  num_comments: number;
+  post_score?: number;  // Optional: Only for Reddit
+  num_comments?: number;  // Optional: Only for Reddit
+  platform_metadata?: RedditMetadata | TwitterMetadata;  // New: Platform-specific data
 }
 
 export interface AnalyticsSummaryResponse {
@@ -821,6 +1033,7 @@ export class CrawlerApiService {
   }
 
   async listInsights(params?: {
+    platform?: Platform;  // New: Filter by platform
     priority_min?: number;
     priority_max?: number;
     category?: string;
@@ -863,6 +1076,7 @@ export class CrawlerApiService {
   }
 
   async getAnalyticsSummary(params?: {
+    platform?: Platform;  // New: Filter by platform
     period?: '7d' | '30d' | '90d';
     group_by?: string;
   }): Promise<AnalyticsSummaryResponse> {

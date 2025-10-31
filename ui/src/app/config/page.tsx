@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { TwitterConfigSection } from '@/components/config/TwitterConfigSection';
 import { useSystemConfiguration, useUpdateSystemConfiguration } from '@/hooks/useApi';
 import {
   Settings,
@@ -44,6 +45,13 @@ export default function ConfigPage() {
     max_posts_per_crawl: config?.crawl_settings.max_posts_per_crawl || 100
   });
 
+  const [twitterSettings, setTwitterSettings] = useState({
+    twitter_enabled: config?.crawl_settings.twitter_enabled || false,
+    twitter_lookback_days: config?.crawl_settings.twitter_lookback_days || 7,
+    twitter_min_engagement: config?.crawl_settings.twitter_min_engagement || 5,
+    twitter_api_tier: (config?.crawl_settings.twitter_api_tier || 'basic') as 'free' | 'basic' | 'pro'
+  });
+
   const [analysisSettings, setAnalysisSettings] = useState({
     priority_threshold: config?.analysis_settings.priority_threshold || 7,
     ai_model: config?.analysis_settings.ai_model || 'gpt-4',
@@ -67,7 +75,10 @@ export default function ConfigPage() {
 
     switch (section) {
       case 'crawl':
-        updates.crawl_settings = crawlSettings;
+        updates.crawl_settings = { ...crawlSettings, ...twitterSettings };
+        break;
+      case 'twitter':
+        updates.crawl_settings = twitterSettings;
         break;
       case 'analysis':
         updates.analysis_settings = analysisSettings;
@@ -90,6 +101,12 @@ export default function ConfigPage() {
   const handleResetSettings = () => {
     if (config) {
       setCrawlSettings(config.crawl_settings);
+      setTwitterSettings({
+        twitter_enabled: config.crawl_settings.twitter_enabled || false,
+        twitter_lookback_days: config.crawl_settings.twitter_lookback_days || 7,
+        twitter_min_engagement: config.crawl_settings.twitter_min_engagement || 5,
+        twitter_api_tier: (config.crawl_settings.twitter_api_tier || 'basic') as 'free' | 'basic' | 'pro'
+      });
       setAnalysisSettings(config.analysis_settings);
       setStorageSettings(config.storage_settings);
       setSystemSettings(config.system_settings);
@@ -312,6 +329,23 @@ export default function ConfigPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Twitter Configuration */}
+          <TwitterConfigSection
+            config={twitterSettings}
+            onChange={(updates) => setTwitterSettings({ ...twitterSettings, ...updates })}
+            isLoading={updateConfigMutation.isPending}
+          />
+
+          <div className="flex justify-end">
+            <Button
+              onClick={() => handleSaveSettings('twitter')}
+              disabled={updateConfigMutation.isPending}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Save Twitter Settings
+            </Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="analysis" className="space-y-6">

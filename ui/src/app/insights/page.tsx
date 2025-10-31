@@ -22,6 +22,9 @@ import {
 } from '@/components/ui/dialog';
 import { useInsights, useInsightDetails } from '@/hooks/useApi';
 import { useAppStore } from '@/stores/appStore';
+import { PlatformFilter, type PlatformValue } from '@/components/platform/PlatformFilter';
+import { PlatformBadge } from '@/components/platform/PlatformBadge';
+import { TwitterContextView } from '@/components/insights/TwitterContextView';
 import {
   Search,
   Filter,
@@ -51,6 +54,7 @@ export default function InsightsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedUserSegment, setSelectedUserSegment] = useState<string>('all');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformValue>('all');
   const [sortBy, setSortBy] = useState<string>('priority');
   const [selectedInsight, setSelectedInsight] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,6 +81,7 @@ export default function InsightsPage() {
     priority_max: 10,
     category: selectedCategory !== 'all' ? selectedCategory as any : undefined,
     user_segment: selectedUserSegment !== 'all' ? selectedUserSegment as any : undefined,
+    platform: selectedPlatform !== 'all' ? selectedPlatform as any : undefined,
   });
 
   // Fetch detailed insight data when modal is open
@@ -138,7 +143,7 @@ export default function InsightsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCategory, selectedUserSegment, selectedPriority, sortBy]);
+  }, [searchQuery, selectedCategory, selectedUserSegment, selectedPriority, selectedPlatform, sortBy]);
 
   const handleViewInsight = (insight: any) => {
     setSelectedInsight(insight);
@@ -323,6 +328,13 @@ export default function InsightsPage() {
               </Select>
             </div>
 
+            {/* Platform Filter */}
+            <PlatformFilter
+              value={selectedPlatform}
+              onChange={setSelectedPlatform}
+              className="h-10"
+            />
+
             {/* Clear Filters */}
             <Button
               variant="outline"
@@ -331,6 +343,7 @@ export default function InsightsPage() {
                 setSelectedCategory('all');
                 setSelectedUserSegment('all');
                 setSelectedPriority('all');
+                setSelectedPlatform('all');
                 setSortBy('priority');
                 setCurrentPage(1);
               }}
@@ -396,11 +409,16 @@ export default function InsightsPage() {
             <Card key={insight.insight_id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
-                  <Badge
-                    className={`${getPriorityColor(insight.priority_score)} text-white`}
-                  >
-                    {getPriorityLabel(insight.priority_score)} - {insight.priority_score.toFixed(1)}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      className={`${getPriorityColor(insight.priority_score)} text-white`}
+                    >
+                      {getPriorityLabel(insight.priority_score)} - {insight.priority_score.toFixed(1)}
+                    </Badge>
+                    {insight.source_type && (
+                      <PlatformBadge platform={insight.source_type} size="sm" />
+                    )}
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -561,6 +579,12 @@ export default function InsightsPage() {
                 >
                   {getPriorityLabel((insightDetails?.data.priority_score || selectedInsight?.priority_score) || 0)} - {((insightDetails?.data.priority_score || selectedInsight?.priority_score) || 0).toFixed(1)}
                 </Badge>
+                {(insightDetails?.data.source_type || selectedInsight?.source_type) && (
+                  <PlatformBadge
+                    platform={insightDetails?.data.source_type || selectedInsight?.source_type}
+                    size="md"
+                  />
+                )}
                 <span className="text-lg font-semibold">Insight Details</span>
               </span>
             </DialogTitle>
@@ -726,50 +750,73 @@ export default function InsightsPage() {
                       <ExternalLink className="mr-2 h-5 w-5" />
                       Source Information
                     </h3>
-                    <div className="bg-muted/50 p-4 rounded-lg space-y-3">
-                      <div>
-                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Original Source</h4>
-                        {insightDetails?.data.post_url ? (
-                          <a
-                            href={insightDetails.data.post_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors"
-                          >
-                            <span className="mr-2">View on Reddit</span>
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <div className="inline-flex items-center text-muted-foreground">
-                            <span className="mr-2">Reddit URL Loading...</span>
-                            <Badge variant="outline" className="text-xs">
-                              Loading Details
-                            </Badge>
+
+                    {(insightDetails?.data.source_type || selectedInsight?.source_type) === 'twitter' ? (
+                      // Twitter-specific context
+                      insightDetails?.data.platform_metadata ? (
+                        <TwitterContextView
+                          tweetId={insightDetails.data.platform_metadata.tweet_id}
+                          authorUsername={insightDetails.data.platform_metadata.author_username}
+                          likes={insightDetails.data.platform_metadata.likes}
+                          retweets={insightDetails.data.platform_metadata.retweets}
+                          replies={insightDetails.data.platform_metadata.replies}
+                          quotes={insightDetails.data.platform_metadata.quotes}
+                          engagementScore={insightDetails.data.platform_metadata.engagement_score}
+                          tweetUrl={insightDetails.data.post_url}
+                          language={insightDetails.data.platform_metadata.language}
+                        />
+                      ) : (
+                        <div className="bg-muted/50 p-4 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Twitter context loading...</p>
+                        </div>
+                      )
+                    ) : (
+                      // Reddit-specific context
+                      <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Original Source</h4>
+                          {insightDetails?.data.post_url ? (
+                            <a
+                              href={insightDetails.data.post_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors"
+                            >
+                              <span className="mr-2">View on Reddit</span>
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <div className="inline-flex items-center text-muted-foreground">
+                              <span className="mr-2">Reddit URL Loading...</span>
+                              <Badge variant="outline" className="text-xs">
+                                Loading Details
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Subreddit</h4>
+                          <Badge variant="secondary" className="text-sm">
+                            r/{insightDetails?.data.subreddit || selectedInsight.subreddit}
+                          </Badge>
+                        </div>
+
+                        <div>
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Discussion Context</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Sourced from Reddit legal technology discussions in r/{insightDetails?.data.subreddit || selectedInsight.subreddit}
+                          </p>
+                        </div>
+
+                        {insightDetails?.data.collected_at && (
+                          <div>
+                            <h4 className="font-medium text-sm text-muted-foreground mb-2">Collected Date</h4>
+                            <p className="text-sm">{new Date(insightDetails.data.collected_at).toLocaleString()}</p>
                           </div>
                         )}
                       </div>
-
-                      <div>
-                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Subreddit</h4>
-                        <Badge variant="secondary" className="text-sm">
-                          r/{insightDetails?.data.subreddit || selectedInsight.subreddit}
-                        </Badge>
-                      </div>
-
-                      <div>
-                        <h4 className="font-medium text-sm text-muted-foreground mb-2">Discussion Context</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Sourced from Reddit legal technology discussions in r/{insightDetails?.data.subreddit || selectedInsight.subreddit}
-                        </p>
-                      </div>
-
-                      {insightDetails?.data.collected_at && (
-                        <div>
-                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Collected Date</h4>
-                          <p className="text-sm">{new Date(insightDetails.data.collected_at).toLocaleString()}</p>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
 
                   {/* Competitive Analysis */}

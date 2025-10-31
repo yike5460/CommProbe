@@ -54,7 +54,85 @@ A specialized data collection and analysis pipeline for monitoring personal inju
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Technology Stack
+### 2.2 Multi-Platform Architecture (Updated for Twitter Integration)
+
+The system now supports **parallel data collection** from multiple platforms:
+
+**Step Functions Parallel Workflow:**
+```
+┌─────────────────────────────────────────────────────────┐
+│           POST /trigger (API Gateway)                   │
+│         {"platforms": ["reddit", "twitter"]}            │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│          Step Functions: Parallel State                 │
+│                 (supio-multi-source-insights-pipeline)  │
+└─────┬───────────────────────────────────────┬───────────┘
+      │                                       │
+      ▼                                       ▼
+┌─────────────────────┐          ┌─────────────────────┐
+│  Reddit Collector   │          │ Twitter Collector   │
+│      Lambda         │          │      Lambda         │
+│  ├─ PRAW library    │          │ ├─ Tweepy library   │
+│  ├─ Subreddit crawl │          │ ├─ Query search     │
+│  └─ Save to S3      │          │ └─ Save to S3       │
+└─────────┬───────────┘          └──────────┬──────────┘
+          │                                   │
+          └─────────────┬─────────────────────┘
+                        │ (collectionResults array)
+                        ▼
+        ┌───────────────────────────────┐
+        │      Analyzer Lambda          │
+        │  ├─ Load from S3 (both)       │
+        │  ├─ Convert to unified format │
+        │  ├─ Tag with platform         │
+        │  └─ Analyze with Claude       │
+        └─────────────┬─────────────────┘
+                      │
+                      ▼
+        ┌───────────────────────────────┐
+        │       Storer Lambda           │
+        │  ├─ Add source_type field     │
+        │  ├─ Add platform_metadata     │
+        │  └─ Save to DynamoDB          │
+        └─────────────┬─────────────────┘
+                      │
+                      ▼
+        ┌───────────────────────────────┐
+        │         DynamoDB              │
+        │   supio-insights table        │
+        │  (with platform tracking)     │
+        └───────────────────────────────┘
+```
+
+**Platform-Specific Lambda Functions:**
+
+1. **Reddit Collector** (`/lambda/collector/index.py`)
+   - Uses PRAW for Reddit API integration
+   - Collects posts and comments from specified subreddits
+   - Returns: `{platform: "reddit", s3_location: "..."}`
+
+2. **Twitter Collector** (`/lambda/collector/twitter/index.py`)
+   - Uses Tweepy for Twitter API v2 integration
+   - Searches by queries (keywords, hashtags, product mentions)
+   - Rate limit handling with graceful timeout
+   - Returns: `{platform: "twitter", s3_location: "..."}`
+
+3. **Analyzer Lambda** (`/lambda/analyzer/index.py`)
+   - Receives `collectionResults` array from both collectors
+   - Loads data from S3 for each platform
+   - Converts platform-specific format to unified format
+   - Tags each post with `platform` field
+   - Analyzes with Claude Sonnet 4
+
+4. **Storer Lambda** (`/lambda/storer/index.py`)
+   - Adds `source_type` field to each insight
+   - Preserves `platform_metadata` with platform-specific metrics
+   - Enables platform filtering in queries
+
+### 2.3 Technology Stack
 
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
@@ -62,8 +140,9 @@ A specialized data collection and analysis pipeline for monitoring personal inju
 | **Hosting** | Cloudflare Pages | Edge deployment with @cloudflare/next-on-pages adapter |
 | **API Layer** | API Gateway + Lambda | REST API with 14 endpoints, API key authentication |
 | **API Proxy** | Next.js API Routes | `/api/proxy` handles CORS and authentication |
-| **Data Collection** | AWS Lambda (Python 3.12) | Serverless, pay-per-use, easy scheduling |
-| **Orchestration** | AWS Step Functions | State management, error handling, retries |
+| **Data Collection (Reddit)** | AWS Lambda + PRAW | Python Reddit API Wrapper, serverless |
+| **Data Collection (Twitter)** | AWS Lambda + Tweepy | Twitter API v2 client, rate limit handling |
+| **Orchestration** | AWS Step Functions (Parallel State) | Multi-platform parallel collection, error handling |
 | **LLM Processing** | Amazon Bedrock (Claude Sonnet 4) | Superior capability, no infrastructure, pay-per-token |
 | **Primary Storage** | AWS S3 | Cheap object storage for raw data |
 | **Primary Database** | DynamoDB | Two tables: supio-insights + supio-system-config |

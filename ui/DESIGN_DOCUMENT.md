@@ -118,6 +118,75 @@ This document outlines the comprehensive UI/UX design for the Legal Community Fe
 - `Tabs` - Analytics section switching
 - `Progress` - Loading states and metrics
 - `Alert` - System notifications and errors
+- `Select` - Dropdowns for filters (including platform filter)
+
+### 3.4 Multi-Platform Visual Language (NEW!)
+
+The UI now supports insights from multiple platforms (Reddit and Twitter). Visual distinction is critical for user understanding.
+
+**Platform Color Scheme:**
+```css
+/* Reddit Platform */
+--reddit-primary: #ff4500;    /* Reddit orange */
+--reddit-bg: #fef2f2;         /* Light orange background */
+--reddit-text: #991b1b;       /* Dark red text */
+
+/* Twitter Platform */
+--twitter-primary: #1da1f2;   /* Twitter blue */
+--twitter-bg: #eff6ff;        /* Light blue background */
+--twitter-text: #1e40af;      /* Dark blue text */
+
+/* Multi-Platform (Both) */
+--multi-primary: #6366f1;     /* Indigo */
+--multi-bg: #f5f3ff;          /* Light purple background */
+--multi-text: #4338ca;        /* Dark indigo text */
+```
+
+**Platform Icons:**
+- **Reddit**: `MessageSquare` icon from lucide-react (or Reddit alien icon)
+- **Twitter**: `Twitter` icon from lucide-react (bird icon)
+- **Multi-Platform**: `Layers` icon from lucide-react
+
+**Platform Badges:**
+```tsx
+<Badge className="bg-reddit-bg text-reddit-text">
+  <MessageSquare className="h-3 w-3 mr-1" />
+  Reddit
+</Badge>
+
+<Badge className="bg-twitter-bg text-twitter-text">
+  <Twitter className="h-3 w-3 mr-1" />
+  Twitter
+</Badge>
+
+<Badge className="bg-multi-bg text-multi-text">
+  <Layers className="h-3 w-3 mr-1" />
+  All Platforms
+</Badge>
+```
+
+**Platform Filter Dropdown:**
+```tsx
+<Select value={platform} onValueChange={setPlatform}>
+  <SelectTrigger className="w-[180px]">
+    <SelectValue placeholder="All Platforms" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="all">
+      <Layers className="h-4 w-4 inline mr-2" />
+      All Platforms
+    </SelectItem>
+    <SelectItem value="reddit">
+      <MessageSquare className="h-4 w-4 inline mr-2" />
+      Reddit Only
+    </SelectItem>
+    <SelectItem value="twitter">
+      <Twitter className="h-4 w-4 inline mr-2" />
+      Twitter Only
+    </SelectItem>
+  </SelectContent>
+</Select>
+```
 
 ---
 
@@ -200,42 +269,61 @@ const kpis = [
 **Secondary Views:** Category grouping, priority queue, detail modal
 
 ```tsx
-// Insights Table Component
-<DataTable
-  columns={[
-    { key: 'priority_score', label: 'Priority', sortable: true },
-    { key: 'feature_summary', label: 'Feature Request', searchable: true },
-    { key: 'feature_category', label: 'Category', filterable: true },
-    { key: 'user_segment', label: 'User Segment', filterable: true },
-    { key: 'analyzed_at', label: 'Date', sortable: true },
-    { key: 'actions', label: 'Actions' }
-  ]}
-  data={insights}
-  filters={{
-    priority_min: { type: 'slider', range: [1, 10] },
-    category: { type: 'multiselect', options: categories },
-    user_segment: { type: 'multiselect', options: segments },
-    date_range: { type: 'daterange' }
-  }}
-  pagination={{
-    pageSize: 50,
-    serverSide: true
-  }}
-/>
+// Insights Page with Platform Filter
+<div className="flex flex-col gap-4">
+  {/* Platform Filter Bar */}
+  <div className="flex items-center gap-4 p-4 bg-white rounded-lg border">
+    <label className="text-sm font-medium">Platform:</label>
+    <PlatformFilter value={platform} onChange={setPlatform} />
+    <div className="ml-auto flex gap-2">
+      <Badge variant="outline">{filteredCount} insights</Badge>
+    </div>
+  </div>
+
+  {/* Insights Table */}
+  <DataTable
+    columns={[
+      { key: 'platform_badge', label: 'Source', render: (row) => <PlatformBadge platform={row.source_type} /> },
+      { key: 'priority_score', label: 'Priority', sortable: true },
+      { key: 'feature_summary', label: 'Feature Request', searchable: true },
+      { key: 'feature_category', label: 'Category', filterable: true },
+      { key: 'user_segment', label: 'User Segment', filterable: true },
+      { key: 'analyzed_at', label: 'Date', sortable: true },
+      { key: 'actions', label: 'Actions' }
+    ]}
+    data={insights}
+    filters={{
+      platform: { type: 'select', options: ['all', 'reddit', 'twitter'] },  // NEW!
+      priority_min: { type: 'slider', range: [1, 10] },
+      category: { type: 'multiselect', options: categories },
+      user_segment: { type: 'multiselect', options: segments },
+      date_range: { type: 'daterange' }
+    }}
+    pagination={{
+      pageSize: 50,
+      serverSide: true
+    }}
+  />
+</div>
 ```
 
 **Filter Panel Design:**
-- Collapsible sidebar with filter controls
+- **Platform Filter** (NEW!) - Prominent dropdown at the top
+- Collapsible sidebar with advanced filter controls
 - Real-time filter application with URL state persistence
 - Filter preset management (save/load common filters)
 - Clear filters and reset functionality
+- Platform filter shows insight count per platform
 
 **Insight Detail Modal:**
 ```tsx
-// Detailed insight view with full Reddit context
+// Detailed insight view with platform-specific context
 <Dialog>
   <DialogHeader>
-    <PriorityBadge score={insight.priority_score} />
+    <div className="flex items-center gap-2">
+      <PlatformBadge platform={insight.source_type} size="lg" />
+      <PriorityBadge score={insight.priority_score} />
+    </div>
     <h2>{insight.feature_summary}</h2>
   </DialogHeader>
 
@@ -243,7 +331,9 @@ const kpis = [
     <Tabs defaultValue="details">
       <TabsList>
         <TabsTrigger value="details">Feature Details</TabsTrigger>
-        <TabsTrigger value="reddit">Reddit Context</TabsTrigger>
+        <TabsTrigger value="source">
+          {insight.source_type === 'reddit' ? 'Reddit Context' : 'Twitter Context'}
+        </TabsTrigger>
         <TabsTrigger value="competitive">Competitive Intel</TabsTrigger>
         <TabsTrigger value="actions">Action Items</TabsTrigger>
       </TabsList>
@@ -252,18 +342,48 @@ const kpis = [
         <FeatureDetailsView insight={insight} />
       </TabsContent>
 
-      <TabsContent value="reddit">
-        <RedditContextView
-          postUrl={insight.post_url}
-          subreddit={insight.subreddit}
-          postScore={insight.post_score}
-          numComments={insight.num_comments}
-        />
+      <TabsContent value="source">
+        {insight.source_type === 'reddit' ? (
+          <RedditContextView
+            postUrl={insight.post_url}
+            subreddit={insight.platform_metadata?.subreddit}
+            postScore={insight.platform_metadata?.post_score}
+            upvoteRatio={insight.platform_metadata?.upvote_ratio}
+            flair={insight.platform_metadata?.flair}
+          />
+        ) : (
+          <TwitterContextView
+            tweetId={insight.platform_metadata?.tweet_id}
+            authorUsername={insight.platform_metadata?.author_username}
+            likes={insight.platform_metadata?.likes}
+            retweets={insight.platform_metadata?.retweets}
+            replies={insight.platform_metadata?.replies}
+            quotes={insight.platform_metadata?.quotes}
+            engagementScore={insight.platform_metadata?.engagement_score}
+            tweetUrl={insight.post_url}
+          />
+        )}
       </TabsContent>
     </Tabs>
   </DialogContent>
 </Dialog>
 ```
+
+**Platform-Specific Context Views:**
+
+**RedditContextView Component:**
+- Subreddit badge with link
+- Post score and upvote ratio
+- Number of comments
+- Flair tag (if available)
+- Direct link to Reddit post
+
+**TwitterContextView Component:**
+- Author username with @ symbol
+- Tweet engagement metrics (likes, retweets, replies, quotes)
+- Total engagement score
+- Tweet language indicator
+- Direct link to Twitter status
 
 ### 4.3 Analytics Dashboard (`/analytics`)
 
