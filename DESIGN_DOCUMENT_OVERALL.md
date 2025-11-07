@@ -8,13 +8,15 @@
 A specialized data collection and analysis pipeline for monitoring personal injury (PI) law discussions across Reddit communities, focusing on medical records processing, demand letter automation, and PI attorney workflow optimization. The system collects posts and comments from PI-focused subreddits, analyzes insights using LLMs with emphasis on medical record handling pain points, and presents actionable intelligence through a web dashboard.
 
 ### Key Features
-- **Multi-Platform Data Collection**: Automated collection from Reddit and X (Twitter)
+- **Multi-Platform Data Collection**: Automated collection from Reddit, X (Twitter), and Slack
 - **Reddit Integration**: Personal injury law subreddits monitoring
-- **X/Twitter Integration**: Real-time social media insights from legal tech discussions (NEW!)
+- **X/Twitter Integration**: Real-time social media insights from legal tech discussions
+- **Slack Integration**: Internal team communication analysis for user engagement and channel insights (NEW!)
 - AI-powered analysis for PI-specific pain points (medical records, demand letters, settlement)
 - Focus on competitors EvenUp and Eve in PI medical record processing space
-- Weekly automated collection with manual trigger capability for both platforms
+- Weekly automated collection with manual trigger capability for all platforms
 - Interactive visualization dashboard for PI attorney workflow insights
+- Internal team analytics: per-user interests, engagement patterns, and channel summaries
 - Cost-optimized serverless architecture with unified data pipeline
 
 ---
@@ -54,57 +56,62 @@ A specialized data collection and analysis pipeline for monitoring personal inju
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Multi-Platform Architecture (Updated for Twitter Integration)
+### 2.2 Multi-Platform Architecture (Updated for Twitter & Slack Integration)
 
 The system now supports **parallel data collection** from multiple platforms:
 
 **Step Functions Parallel Workflow:**
 ```
-┌─────────────────────────────────────────────────────────┐
-│           POST /trigger (API Gateway)                   │
-│         {"platforms": ["reddit", "twitter"]}            │
-└────────────────────┬────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│              POST /trigger (API Gateway)                     │
+│      {"platforms": ["reddit", "twitter", "slack"]}           │
+└────────────────────┬─────────────────────────────────────────┘
                      │
                      ▼
-┌─────────────────────────────────────────────────────────┐
-│          Step Functions: Parallel State                 │
-│                 (supio-multi-source-insights-pipeline)  │
-└─────┬───────────────────────────────────────┬───────────┘
-      │                                       │
-      ▼                                       ▼
-┌─────────────────────┐          ┌─────────────────────┐
-│  Reddit Collector   │          │ Twitter Collector   │
-│      Lambda         │          │      Lambda         │
-│  ├─ PRAW library    │          │ ├─ Tweepy library   │
-│  ├─ Subreddit crawl │          │ ├─ Query search     │
-│  └─ Save to S3      │          │ └─ Save to S3       │
-└─────────┬───────────┘          └──────────┬──────────┘
-          │                                   │
-          └─────────────┬─────────────────────┘
-                        │ (collectionResults array)
-                        ▼
-        ┌───────────────────────────────┐
-        │      Analyzer Lambda          │
-        │  ├─ Load from S3 (both)       │
-        │  ├─ Convert to unified format │
-        │  ├─ Tag with platform         │
-        │  └─ Analyze with Claude       │
-        └─────────────┬─────────────────┘
-                      │
-                      ▼
-        ┌───────────────────────────────┐
-        │       Storer Lambda           │
-        │  ├─ Add source_type field     │
-        │  ├─ Add platform_metadata     │
-        │  └─ Save to DynamoDB          │
-        └─────────────┬─────────────────┘
-                      │
-                      ▼
-        ┌───────────────────────────────┐
-        │         DynamoDB              │
-        │   supio-insights table        │
-        │  (with platform tracking)     │
-        └───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│            Step Functions: Parallel State                    │
+│              (supio-multi-source-insights-pipeline)          │
+└─────┬──────────────────┬─────────────────┬───────────────────┘
+      │                  │                 │
+      ▼                  ▼                 ▼
+┌─────────────┐   ┌─────────────┐   ┌──────────────────────┐
+│  Reddit     │   │  Twitter    │   │  Slack Collector     │
+│  Collector  │   │  Collector  │   │  Lambda (NEW!)       │
+│  Lambda     │   │  Lambda     │   │  ├─ Slack SDK        │
+│  ├─ PRAW    │   │  ├─ Tweepy  │   │  ├─ User analysis    │
+│  ├─ Crawl   │   │  ├─ Search  │   │  ├─ Channel analysis │
+│  └─ S3      │   │  └─ S3      │   │  └─ Save to S3       │
+└──────┬──────┘   └──────┬──────┘   └──────────┬───────────┘
+       │                 │                       │
+       └─────────────────┴───────────────────────┘
+                         │ (collectionResults array)
+                         ▼
+         ┌───────────────────────────────────────┐
+         │         Analyzer Lambda               │
+         │  ├─ Load from S3 (all platforms)      │
+         │  ├─ Convert to unified format         │
+         │  ├─ Tag with platform & type          │
+         │  └─ Analyze with Claude Sonnet 4.5    │
+         └─────────────┬─────────────────────────┘
+                       │
+                       ▼
+         ┌───────────────────────────────────────┐
+         │          Storer Lambda                │
+         │  ├─ Add source_type field             │
+         │  ├─ Add platform_metadata             │
+         │  ├─ Slack-specific: user/channel data │
+         │  └─ Save to DynamoDB                  │
+         └─────────────┬─────────────────────────┘
+                       │
+                       ▼
+         ┌───────────────────────────────────────┐
+         │           DynamoDB                    │
+         │     supio-insights table              │
+         │  (multi-platform with Slack support)  │
+         │                                       │
+         │   NEW: supio-slack-profiles table     │
+         │  (user engagement & channel insights) │
+         └───────────────────────────────────────┘
 ```
 
 **Platform-Specific Lambda Functions:**
@@ -120,16 +127,28 @@ The system now supports **parallel data collection** from multiple platforms:
    - Rate limit handling with graceful timeout
    - Returns: `{platform: "twitter", s3_location: "..."}`
 
-3. **Analyzer Lambda** (`/lambda/analyzer/index.py`)
-   - Receives `collectionResults` array from both collectors
+3. **Slack Collector** (`/lambda/collector/slack/index.py`) (NEW!)
+   - Uses Slack SDK (slack-sdk) for workspace integration
+   - Two analysis modes:
+     - **User Analysis**: Analyze individual user's interests, opinions, engagement patterns
+     - **Channel Analysis**: Summarize channel content for product insights
+     - **Workspace Scan**: Analyze all accessible channels
+   - Fetches messages, replies, channel membership data
+   - Rate limiting with exponential backoff
+   - Returns: `{platform: "slack", analysis_type: "user|channel|workspace", s3_location: "..."}`
+
+4. **Analyzer Lambda** (`/lambda/analyzer/index.py`)
+   - Receives `collectionResults` array from all collectors
    - Loads data from S3 for each platform
    - Converts platform-specific format to unified format
    - Tags each post with `platform` field
-   - Analyzes with Claude Sonnet 4
+   - Slack-specific: handles user profiles and channel summaries separately
+   - Analyzes with Claude Sonnet 4.5
 
-4. **Storer Lambda** (`/lambda/storer/index.py`)
+5. **Storer Lambda** (`/lambda/storer/index.py`)
    - Adds `source_type` field to each insight
    - Preserves `platform_metadata` with platform-specific metrics
+   - Slack-specific: stores to both `supio-insights` and `supio-slack-profiles` tables
    - Enables platform filtering in queries
 
 ### 2.3 Technology Stack
@@ -142,6 +161,7 @@ The system now supports **parallel data collection** from multiple platforms:
 | **API Proxy** | Next.js API Routes | `/api/proxy` handles CORS and authentication |
 | **Data Collection (Reddit)** | AWS Lambda + PRAW | Python Reddit API Wrapper, serverless |
 | **Data Collection (Twitter)** | AWS Lambda + Tweepy | Twitter API v2 client, rate limit handling |
+| **Data Collection (Slack)** | AWS Lambda + Slack SDK | Internal team analysis, user/channel insights |
 | **Orchestration** | AWS Step Functions (Parallel State) | Multi-platform parallel collection, error handling |
 | **LLM Processing** | Amazon Bedrock (Claude Sonnet 4) | Superior capability, no infrastructure, pay-per-token |
 | **Primary Storage** | AWS S3 | Cheap object storage for raw data |
@@ -157,7 +177,8 @@ The system now supports **parallel data collection** from multiple platforms:
 
 **Primary Sources:**
 - **Reddit API:** PI attorney feedback, medical records pain points, demand letter challenges
-- **X (Twitter) API v2:** Real-time legal tech discussions, PI attorney sentiment, product mentions (NEW!)
+- **X (Twitter) API v2:** Real-time legal tech discussions, PI attorney sentiment, product mentions
+- **Slack API:** Internal team communication analysis, user engagement patterns, channel insights (NEW!)
 - **Web Content:** Competitor websites (EvenUp, Eve), PI law firm resources, medical-legal documentation
 
 **Target Content - Reddit:**
@@ -166,13 +187,32 @@ The system now supports **parallel data collection** from multiple platforms:
 - Medical-legal integration resources
 - PI law firm workflow and technology discussions
 
-**Target Content - X/Twitter (NEW!):**
+**Target Content - X/Twitter:**
 - Legal tech influencers and thought leaders
 - PI attorney practice management discussions
 - Product announcements and feature releases
 - User testimonials and complaints
 - Competitor mentions and comparisons
 - Industry news and trends
+
+**Target Content - Slack (Internal Team Analysis) (NEW!):**
+- **User-Level Analysis:**
+  - Individual team member interests, opinions, and focus areas
+  - Communication patterns and expertise domains
+  - Engagement levels across different channels
+  - Pain points and challenges expressed
+  - Influence and impact on team decisions
+- **Channel-Level Analysis:**
+  - Channel purpose and key discussion topics
+  - User feedback and feature requests
+  - Pain points and blockers discussed
+  - Sentiment and satisfaction levels
+  - Key contributors and influencers
+- **Workspace-Level Analysis:**
+  - Cross-channel themes and patterns
+  - Strategic opportunities identified
+  - Communication flow and bottlenecks
+  - Overall team health and activity
 
 **Search Keywords (Both Platforms):**
 - Product names: "Supio", "EvenUp", "Eve"
@@ -192,7 +232,7 @@ The system now supports **parallel data collection** from multiple platforms:
     "api_version": "PRAW",
     "rate_limit": "60 requests/minute"
   },
-  "twitter": {  # NEW!
+  "twitter": {
     "schedule": "cron(0 3 ? * MON *)",  # Weekly on Monday 3 AM UTC (after Reddit)
     "lookback_days": 7,
     "min_engagement": 5,  # Minimum likes + retweets
@@ -211,6 +251,28 @@ The system now supports **parallel data collection** from multiple platforms:
     "rate_limit": "300 tweets/15-min window",
     "max_tweets_per_query": 100
   },
+  "slack": {  # NEW! Internal team analysis
+    "schedule": "on_demand",  # Triggered manually or via API
+    "lookback_days": 30,  # Default analysis period
+    "analysis_modes": [
+      "user",       # Analyze specific user's interests and engagement
+      "channel",    # Analyze channel for product insights
+      "workspace"   # Scan all channels for strategic overview
+    ],
+    "api_version": "slack-sdk",
+    "rate_limit": "Tier 2 (20+ req/min with exponential backoff)",
+    "max_messages_per_channel": 200,  # For single channel analysis
+    "max_channels_workspace_scan": 20,  # For full workspace analysis
+    "max_threads_per_channel": 50,  # Limit reply fetching
+    "required_scopes": [
+      "channels:history",    # Read public channel messages
+      "channels:read",       # List public channels
+      "groups:history",      # Read private channel messages (if invited)
+      "groups:read",         # List private channels
+      "users:read",          # Get user information
+      "users:read.email"     # Look up users by email
+    ]
+  },
   "web_content": {
     "schedule": "on_demand",  # Triggered manually when needed
     "types": ["competitor_updates", "pi_law_resources", "medical_legal_tech"],
@@ -221,9 +283,10 @@ The system now supports **parallel data collection** from multiple platforms:
     "alert_threshold": 8,     # Alert PM for priority >= 8
     "ttl_days": 90,
     "focus_areas": ["medical_records_processing", "demand_letter_automation", "medical_chronology", "settlement_valuation"],
-    "source_weighting": {  # NEW! Different weights by platform
+    "source_weighting": {  # Different weights by platform
       "reddit": 1.0,      # Base weight
       "twitter": 0.9,     # Slightly lower due to brevity
+      "slack": 1.2,       # Higher - internal team insights are valuable
       "web": 0.8          # Lower for scraped content
     }
   }
@@ -236,8 +299,8 @@ The system now supports **parallel data collection** from multiple platforms:
 // Raw data stored in S3 (any source)
 interface RawContent {
   id: string;
-  source_type: string;    // "reddit", "twitter", or "web"
-  source_platform: string; // NEW! More specific: "reddit_post", "twitter_tweet", "twitter_reply"
+  source_type: string;    // "reddit", "twitter", "slack", or "web"
+  source_platform: string; // More specific: "reddit_post", "twitter_tweet", "slack_user_profile", "slack_channel"
   url: string;
   collected_at: number;
   raw_content: any;       // Original JSON/HTML/text
@@ -259,6 +322,27 @@ interface RawContent {
     subreddit?: string;
     post_score?: number;
     num_comments?: number;
+
+    // Slack-specific (NEW!)
+    workspace_id?: string;
+    workspace_name?: string;
+    analysis_type?: "user" | "channel" | "workspace";
+
+    // For user analysis
+    user_id?: string;
+    user_email?: string;
+    user_name?: string;
+    total_channels?: number;
+    active_channels?: number;
+    total_messages?: number;
+    total_replies?: number;
+
+    // For channel analysis
+    channel_id?: string;
+    channel_name?: string;
+    is_private?: boolean;
+    num_members?: number;
+    messages_analyzed?: number;
   };
 }
 
@@ -268,7 +352,7 @@ interface ProcessedInsight {
   post_id: string;
   source_url: string;
   timestamp: number;
-  
+
   // PM focus
   feature_summary: string;       // One-line description
   feature_category: string;      // medical_records_processing, demand_letter_automation, medical_chronology, settlement_valuation, case_management
@@ -278,10 +362,101 @@ interface ProcessedInsight {
   // Competition (PI-specific)
   competitors_mentioned: string[];  // ["EvenUp", "Eve"]
   supio_mentioned: boolean;
-  
+
   // Action
   action_required: boolean;      // Priority >= 8
   suggested_action: string;      // "Add to roadmap", "Research"
+}
+
+// Slack user profile stored in supio-slack-profiles table (NEW!)
+interface SlackUserProfile {
+  // Primary Key
+  user_id: string;               // Slack user ID (PK)
+  workspace_id: string;          // Slack workspace ID (SK)
+
+  // User Identity
+  user_email: string;
+  user_name: string;
+  display_name?: string;
+
+  // Engagement Metrics
+  total_channels: number;        // Channels user is member of
+  active_channels: number;       // Channels with user activity
+  total_messages: number;
+  total_replies: number;
+  total_activity: number;        // messages + replies
+
+  // Analysis Period
+  analysis_date: string;         // ISO timestamp of latest analysis
+  analysis_period_days: number;  // Days analyzed (default: 30)
+
+  // AI-Generated Insights
+  interests: string[];           // Core interests and focus areas
+  expertise_areas: string[];     // Demonstrated expertise domains
+  communication_style: string;   // e.g., "collaborative", "analytical"
+  key_opinions: string[];        // Important viewpoints expressed
+  pain_points: string[];         // Challenges and frustrations
+  influence_level: string;       // "high", "medium", "low"
+
+  // Per-Channel Activity
+  channel_breakdown: Array<{
+    channel_id: string;
+    channel_name: string;
+    message_count: number;
+    reply_count: number;
+    last_activity: string;       // ISO timestamp
+    ai_summary: string;          // AI analysis of activity in this channel
+  }>;
+
+  // Overall AI Analysis
+  ai_insights: string;           // Comprehensive cross-channel analysis
+  ai_persona_summary: string;    // Concise professional persona
+
+  // Metadata
+  ai_tokens_used: number;
+  last_updated: number;          // Unix timestamp
+  ttl: number;                   // Auto-expire after 180 days (longer than insights)
+}
+
+// Slack channel summary stored in supio-slack-profiles table (NEW!)
+interface SlackChannelSummary {
+  // Primary Key
+  channel_id: string;            // Slack channel ID (PK)
+  workspace_id: string;          // Slack workspace ID (SK)
+
+  // Channel Identity
+  channel_name: string;
+  is_private: boolean;
+  num_members: number;
+
+  // Analysis Period
+  analysis_date: string;         // ISO timestamp of latest analysis
+  analysis_period_days: number;  // Days analyzed
+  messages_analyzed: number;
+
+  // AI-Generated Insights (Product Manager Focus)
+  channel_purpose: string;       // What is this channel for?
+  key_topics: string[];          // Main discussion themes
+  feature_requests: string[];    // Requested features/improvements
+  pain_points: string[];         // Problems and blockers discussed
+  sentiment: string;             // Overall mood: "positive", "neutral", "negative"
+  key_contributors: Array<{      // Most active/influential users
+    user_id: string;
+    user_name: string;
+    contribution_level: string;  // "high", "medium", "low"
+  }>;
+
+  // Strategic Insights
+  product_opportunities: string[]; // Actionable product improvements
+  strategic_recommendations: string[]; // What PMs should prioritize
+
+  // Overall AI Analysis
+  ai_summary: string;            // Comprehensive channel analysis
+
+  // Metadata
+  ai_tokens_used: number;
+  last_updated: number;          // Unix timestamp
+  ttl: number;                   // Auto-expire after 180 days
 }
 ```
 
@@ -740,7 +915,7 @@ export class LegalCrawlerStack extends Stack {
       }]
     });
 
-    // System Configuration Table - New! Persists user configuration
+    // System Configuration Table - Persists user configuration
     const configTable = new Table(this, 'SystemConfigTable', {
       tableName: 'supio-system-config',
       partitionKey: { name: 'config_id', type: AttributeType.STRING },
@@ -748,11 +923,27 @@ export class LegalCrawlerStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN, // Keep config even if stack is deleted
     });
 
+    // Slack Profiles Table - NEW! Stores user profiles and channel summaries
+    const slackProfilesTable = new Table(this, 'SlackProfilesTable', {
+      tableName: 'supio-slack-profiles',
+      partitionKey: { name: 'PK', type: AttributeType.STRING },  // user_id or channel_id
+      sortKey: { name: 'SK', type: AttributeType.STRING },       // workspace_id
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',  // Auto-cleanup after 180 days
+
+      // GSI for workspace-wide queries
+      globalSecondaryIndexes: [{
+        indexName: 'WorkspaceIndex',
+        partitionKey: { name: 'workspace_id', type: AttributeType.STRING },
+        sortKey: { name: 'last_updated', type: AttributeType.NUMBER },
+      }]
+    });
+
     // Lambda Layer for shared dependencies
     const dependenciesLayer = new LayerVersion(this, 'DependenciesLayer', {
       code: Code.fromAsset(path.join(__dirname, '../lambda/layer')),
       compatibleRuntimes: [Runtime.PYTHON_3_12],
-      description: 'Shared dependencies (praw, tweepy, boto3, etc.)',  // NEW! Added tweepy
+      description: 'Shared dependencies (praw, tweepy, slack-sdk, boto3, etc.)',
     });
 
     // Lambda Functions
@@ -774,7 +965,7 @@ export class LegalCrawlerStack extends Stack {
       logRetention: RetentionDays.ONE_WEEK,
     });
 
-    // Twitter/X Collector Lambda (NEW!)
+    // Twitter/X Collector Lambda
     const twitterCollector = new Function(this, 'TwitterCollectorFunction', {
       runtime: Runtime.PYTHON_3_12,
       code: Code.fromAsset(path.join(__dirname, '../lambda/collector/twitter')),
@@ -791,11 +982,28 @@ export class LegalCrawlerStack extends Stack {
       logRetention: RetentionDays.ONE_WEEK,
     });
 
-    // Multi-Source Step Functions Pipeline (NEW! Parallel collection)
+    // Slack Collector Lambda (NEW!)
+    const slackCollector = new Function(this, 'SlackCollectorFunction', {
+      runtime: Runtime.PYTHON_3_12,
+      code: Code.fromAsset(path.join(__dirname, '../lambda/collector/slack')),
+      handler: 'index.handler',
+      timeout: Duration.minutes(15),
+      memorySize: 2048,  // Higher memory for AI analysis
+      environment: {
+        BUCKET_NAME: rawDataBucket.bucketName,
+        SLACK_PROFILES_TABLE: slackProfilesTable.tableName,
+        SLACK_BOT_TOKEN: slackBotToken,  // Slack Bot User OAuth Token
+        AWS_BEDROCK_REGION: 'us-west-2',  // For AI analysis
+      },
+      layers: [dependenciesLayer],
+      logRetention: RetentionDays.ONE_WEEK,
+    });
+
+    // Multi-Source Step Functions Pipeline (Parallel collection from all platforms)
     const processingStateMachine = new StateMachine(this, 'MultiSourceInsightsPipeline', {
       stateMachineName: 'supio-multi-source-insights-pipeline',
       definition: new Parallel(this, 'ParallelCollection', {
-        comment: 'Collect from Reddit and Twitter in parallel',
+        comment: 'Collect from Reddit, Twitter, and Slack in parallel',
       })
         .branch(
           // Reddit collection branch
@@ -805,9 +1013,16 @@ export class LegalCrawlerStack extends Stack {
           })
         )
         .branch(
-          // Twitter collection branch (NEW!)
+          // Twitter collection branch
           new LambdaInvoke(this, 'CollectTwitterPosts', {
             lambdaFunction: twitterCollector,
+            outputPath: '$.Payload',
+          })
+        )
+        .branch(
+          // Slack collection branch (NEW!)
+          new LambdaInvoke(this, 'CollectSlackData', {
+            lambdaFunction: slackCollector,
             outputPath: '$.Payload',
           })
         )
@@ -815,7 +1030,7 @@ export class LegalCrawlerStack extends Stack {
         .next(new LambdaInvoke(this, 'AnalyzePosts', {
           lambdaFunction: analyzer,
           outputPath: '$.Payload',
-          comment: 'Analyze posts from both platforms',
+          comment: 'Analyze posts from all platforms',
         }))
         // Store insights
         .next(new LambdaInvoke(this, 'StoreInsights', {
@@ -843,7 +1058,7 @@ export class LegalCrawlerStack extends Stack {
       targets: [new SfnStateMachine(processingStateMachine)],
     });
 
-    // API Lambda Function - Handles all 14 REST endpoints
+    // API Lambda Function - Handles all REST endpoints (including new Slack endpoints)
     const apiFunction = new Function(this, 'ApiFunction', {
       runtime: Runtime.PYTHON_3_12,
       code: Code.fromAsset(path.join(__dirname, '../lambda/api')),
@@ -852,7 +1067,9 @@ export class LegalCrawlerStack extends Stack {
       environment: {
         STATE_MACHINE_ARN: stateMachine.stateMachineArn,
         INSIGHTS_TABLE_NAME: insightsTable.tableName,
-        CONFIG_TABLE_NAME: configTable.tableName,  // Configuration persistence
+        CONFIG_TABLE_NAME: configTable.tableName,
+        SLACK_PROFILES_TABLE_NAME: slackProfilesTable.tableName,  // NEW!
+        SLACK_BOT_TOKEN: slackBotToken,  // For triggering Slack analysis
       },
       layers: [dependenciesLayer],
       logRetention: RetentionDays.ONE_WEEK,
@@ -862,7 +1079,16 @@ export class LegalCrawlerStack extends Stack {
     stateMachine.grantStartExecution(apiFunction);
     stateMachine.grantRead(apiFunction);
     insightsTable.grantReadData(apiFunction);
-    configTable.grantReadWriteData(apiFunction);  // Config management
+    configTable.grantReadWriteData(apiFunction);
+    slackProfilesTable.grantReadWriteData(apiFunction);  // NEW! Slack profiles access
+
+    // Grant Slack collector permissions
+    rawDataBucket.grantReadWrite(slackCollector);
+    slackProfilesTable.grantReadWriteData(slackCollector);
+    slackCollector.addToRolePolicy(new PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: ['*'],  // Bedrock access for AI analysis
+    }));
 
     // API Gateway with 14 endpoints
     const api = new RestApi(this, 'CrawlerApi', {
@@ -939,17 +1165,10 @@ export class LegalCrawlerStack extends Stack {
 ```bash
 # Local Development
 npm run dev           # Next.js dev server
-npm run worker:dev    # Wrangler for Workers
-npx cdk synth            # Check CDK synthesis
-
-# Testing
-npm test             # Unit tests
-npm run test:load    # K6 load testing
-
-# Deployment
-npm run build        # Build Next.js
-wrangler publish     # Deploy Workers
-npx cdk deploy          # Deploy AWS infrastructure
+npx cdk deploy \
+  --context redditClientId=iPH6UMuXs_0pFWYBHi8gOg \
+  --context redditClientSecret=K6LYsuo4BTkP_ILb2GpE_45dBQ6PqA \
+  --context \ twitterBearerToken=AAAAAAAAAAAAAAAAAAAAADI25AEAAAAAH282Z5Gi4tdw1o12WlKP4vcpWY8%3DHgcIiWpe62ppw1ecCLdsoKFyc4ljvQTXlxEFkM67FBJMz7VsPZ
 ```
 
 ### 10.2 CI/CD Pipeline
