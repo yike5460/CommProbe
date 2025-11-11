@@ -5,6 +5,8 @@
 
 'use client';
 
+export const runtime = 'edge';
+
 import { useParams, useRouter } from 'next/navigation';
 import { AppLayout } from '@/components/layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
