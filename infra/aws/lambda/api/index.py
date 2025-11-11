@@ -1478,6 +1478,15 @@ def handle_slack_list_users(event: Dict[str, Any], headers: Dict[str, str]) -> D
 
         users = convert_decimals(response.get('Items', []))
 
+        # Parse JSON string fields back to arrays for each user
+        for user in users:
+            for field in ['interests', 'expertise_areas', 'key_opinions', 'pain_points', 'channel_breakdown']:
+                if field in user and isinstance(user[field], str):
+                    try:
+                        user[field] = json.loads(user[field])
+                    except:
+                        pass
+
         return create_response(200, {
             'users': users,
             'count': len(users),
@@ -1593,6 +1602,15 @@ def handle_slack_list_channels(event: Dict[str, Any], headers: Dict[str, str]) -
         )
 
         channels = convert_decimals(response.get('Items', []))
+
+        # Parse JSON string fields back to arrays for each channel
+        for channel in channels:
+            for field in ['key_topics', 'feature_requests', 'pain_points', 'product_opportunities', 'strategic_recommendations', 'key_contributors']:
+                if field in channel and isinstance(channel[field], str):
+                    try:
+                        channel[field] = json.loads(channel[field])
+                    except:
+                        pass
 
         return create_response(200, {
             'channels': channels,
