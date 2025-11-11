@@ -11,11 +11,13 @@ PRIORITY_SCORE_THRESHOLD = 5
 
 def handler(event, context):
     """
-    Lambda handler for analyzing posts from multiple sources (Reddit + Twitter) using Amazon Bedrock
+    Lambda handler for analyzing posts from multiple sources (Reddit + Twitter + Slack) using Amazon Bedrock
 
     Supports both:
     - Legacy single-source: event = {s3_location: "..."}
     - Multi-source parallel: event = {collectionResults: [{platform: "reddit", s3_location: "..."}, ...]}
+
+    Note: Slack data is skipped here since it's already analyzed inline by the Slack Collector Lambda
     """
     print(f"Starting analysis with event: {json.dumps(event)}")
 
@@ -40,6 +42,11 @@ def handler(event, context):
 
             platform = result_body.get('platform', 'unknown')
             s3_location = result_body.get('s3_location')
+
+            # Skip Slack data - it's already analyzed and stored by the collector Lambda
+            if platform == 'slack':
+                print(f"Skipping Slack data (already analyzed): {s3_location}")
+                continue
 
             if not s3_location:
                 print(f"Warning: No s3_location in result for platform {platform}, skipping")

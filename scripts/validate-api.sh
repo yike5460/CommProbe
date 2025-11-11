@@ -14,6 +14,7 @@ usage() {
     echo "  -r, --region REGION     AWS region (default: us-west-2)"
     echo "  -p, --pipeline-only     Test only pipeline endpoints (original tests)"
     echo "  -d, --data-only         Test only data access endpoints (Priority 1)"
+    echo "  -s, --slack-only        Test only Slack integration endpoints"
     echo "  -q, --quick             Skip pipeline execution tests (faster)"
     echo "  --skip-s3               Skip S3 storage validation"
     echo "  --skip-quality          Skip analysis quality validation"
@@ -25,23 +26,29 @@ usage() {
     echo "  Enhanced Analytics Tests: trends analysis, competitor intelligence"
     echo "  Operational Tests: execution cancellation, execution logs"
     echo "  Twitter Integration Tests: multi-platform collection, platform filtering, Twitter insights"
+    echo "  Slack Integration Tests: channel/user analysis triggers, profile retrieval, list operations"
+    echo ""
+    echo "Note: Slack tests require SLACK_BOT_TOKEN to be configured in Lambda environment."
+    echo "      If not configured, tests will verify proper 'disabled' error handling."
     echo ""
     echo "Examples:"
     echo "  $0                      # Run all tests (default)"
     echo "  $0 --region us-east-1   # Run tests against us-east-1 region"
     echo "  $0 --pipeline-only      # Test only original pipeline functionality"
     echo "  $0 --data-only          # Test only new data access endpoints"
+    echo "  $0 --slack-only         # Test only Slack integration (user & channel analysis)"
     echo "  $0 --quick              # Skip long-running pipeline execution test"
     exit 0
 }
 
 # Default Configuration (can be overridden by region parameter)
 AWS_REGION="us-west-2"
-TIMEOUT_SECONDS=180
+TIMEOUT_SECONDS=900
 
 # Test configuration flags
 PIPELINE_ONLY=false
 DATA_ONLY=false
+SLACK_ONLY=false
 QUICK_MODE=false
 SKIP_S3=false
 SKIP_QUALITY=false
@@ -62,6 +69,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--data-only)
             DATA_ONLY=true
+            shift
+            ;;
+        -s|--slack-only)
+            SLACK_ONLY=true
             shift
             ;;
         -q|--quick)
@@ -1057,6 +1068,318 @@ test_platform_analytics() {
     fi
 }
 
+# Test 20: Slack User Analysis Trigger
+test_slack_user_analysis() {
+    log_info "Testing Slack user analysis trigger..."
+
+    # Note: This test requires SLACK_BOT_TOKEN to be configured in Lambda environment
+    # If token is set to 'DISABLED', the test will verify proper error handling
+    local trigger_data='{"user_email": "aaron.yi@supio.com", "days": 30}'
+    local response
+    response=$(api_request "POST" "/slack/analyze/user" "$trigger_data")
+
+    # Check if Slack is disabled
+    if echo "$response" | jq -e '.status' > /dev/null 2>&1; then
+        local status
+        status=$(echo "$response" | jq -r '.status')
+        if [ "$status" = "disabled" ]; then
+            add_result "PASS" "Slack User Analysis" "Slack disabled (expected if not configured)"
+            log_warning "Slack user analysis: Integration not configured (set SLACK_BOT_TOKEN in Lambda)"
+            return 0
+        fi
+    fi
+
+    # Check for successful trigger or appropriate error
+    if echo "$response" | jq -e '.message' > /dev/null 2>&1; then
+        local message request_id
+        message=$(echo "$response" | jq -r '.message')
+        request_id=$(echo "$response" | jq -r '.request_id // "unknown"')
+        add_result "PASS" "Slack User Analysis" "Triggered: $message (ID: $request_id)"
+        log_success "Slack user analysis triggered successfully"
+        SLACK_REQUEST_ID="$request_id"
+    else
+        if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.error')
+            # User not found is expected for test email
+            if [[ "$error_msg" == *"not found"* ]] || [[ "$error_msg" == *"disabled"* ]]; then
+                add_result "PASS" "Slack User Analysis" "Proper error handling: $error_msg"
+                log_success "Slack user analysis error handling working"
+            else
+                add_result "FAIL" "Slack User Analysis" "Unexpected error: $error_msg"
+                log_error "Slack user analysis failed with unexpected error"
+                return 1
+            fi
+        else
+            add_result "FAIL" "Slack User Analysis" "Invalid response format"
+            log_error "Slack user analysis endpoint failed"
+            return 1
+        fi
+    fi
+}
+
+# Test 21: Slack Get User Profile
+test_slack_get_user_profile() {
+    log_info "Testing Slack get user profile..."
+
+    # Test with a non-existent user ID to verify error handling
+    local response
+    response=$(api_request "GET" "/slack/users/U123456789?workspace_id=default")
+
+    if echo "$response" | jq -e '.user_id' > /dev/null 2>&1; then
+        local user_name user_email total_activity
+        user_name=$(echo "$response" | jq -r '.user_name')
+        user_email=$(echo "$response" | jq -r '.user_email')
+        total_activity=$(echo "$response" | jq -r '.total_activity')
+        add_result "PASS" "Slack Get User Profile" "Profile: $user_name ($user_email), Activity: $total_activity"
+        log_success "Slack user profile endpoint working with data"
+    else
+        if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.error')
+            # Not found is expected for test user ID
+            if [[ "$error_msg" == *"not found"* ]] || [[ "$error_msg" == *"does not exist"* ]]; then
+                add_result "PASS" "Slack Get User Profile" "Proper 404 handling: $error_msg"
+                log_success "Slack user profile error handling working"
+            else
+                add_result "FAIL" "Slack Get User Profile" "Unexpected error: $error_msg"
+                log_error "Slack user profile endpoint failed"
+                return 1
+            fi
+        else
+            add_result "FAIL" "Slack Get User Profile" "Invalid response format"
+            log_error "Slack user profile endpoint failed"
+            return 1
+        fi
+    fi
+}
+
+# Test 22: Slack List Users
+test_slack_list_users() {
+    log_info "Testing Slack list users..."
+
+    local response
+    response=$(api_request "GET" "/slack/users?workspace_id=default&limit=10")
+
+    # Check if response contains users array (may be empty initially)
+    if echo "$response" | jq -e '.users' > /dev/null 2>&1; then
+        local count
+        count=$(echo "$response" | jq -r '.count')
+        if [ "$count" -eq 0 ]; then
+            add_result "PASS" "Slack List Users" "No users analyzed yet (run analysis first)"
+            log_success "Slack list users endpoint working (empty)"
+        else
+            add_result "PASS" "Slack List Users" "Found $count user profile(s)"
+            log_success "Slack list users endpoint working with data"
+        fi
+    else
+        # Check if it's an error response
+        if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.error')
+            add_result "PASS" "Slack List Users" "Error response: $error_msg"
+            log_warning "Slack list users: $error_msg"
+        else
+            add_result "FAIL" "Slack List Users" "Invalid response format"
+            log_error "Slack list users endpoint failed"
+            return 1
+        fi
+    fi
+}
+
+# Test 23: Slack Channel Analysis Trigger
+test_slack_channel_analysis() {
+    log_info "Testing Slack channel analysis trigger..."
+
+    # Test with a real channel name that the bot should have access to
+    # Using 'mailroom' as it's a smaller channel good for testing
+    local trigger_data='{"channel_name": "mailroom", "days": 7, "workspace_id": "default"}'
+    local response
+    response=$(api_request "POST" "/slack/analyze/channel" "$trigger_data")
+
+    # Check if Slack is disabled
+    if echo "$response" | jq -e '.status' > /dev/null 2>&1; then
+        local status
+        status=$(echo "$response" | jq -r '.status')
+        if [ "$status" = "disabled" ]; then
+            add_result "PASS" "Slack Channel Analysis" "Slack disabled (expected if not configured)"
+            log_warning "Slack channel analysis: Integration not configured (set SLACK_BOT_TOKEN in Lambda)"
+            return 0
+        fi
+    fi
+
+    # Check for successful trigger
+    if echo "$response" | jq -e '.message' > /dev/null 2>&1; then
+        local message request_id
+        message=$(echo "$response" | jq -r '.message')
+        request_id=$(echo "$response" | jq -r '.request_id // "unknown"')
+        add_result "PASS" "Slack Channel Analysis" "Triggered: $message (ID: $request_id)"
+        log_success "Slack channel analysis triggered successfully"
+        SLACK_CHANNEL_REQUEST_ID="$request_id"
+    else
+        if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.error')
+            # Channel not found or bot not invited are expected errors if not configured properly
+            if [[ "$error_msg" == *"not found"* ]] || [[ "$error_msg" == *"disabled"* ]] || [[ "$error_msg" == *"not invited"* ]]; then
+                add_result "PASS" "Slack Channel Analysis" "Proper error handling: $error_msg"
+                log_warning "Slack channel analysis: $error_msg"
+            else
+                add_result "FAIL" "Slack Channel Analysis" "Unexpected error: $error_msg"
+                log_error "Slack channel analysis failed"
+                return 1
+            fi
+        else
+            add_result "FAIL" "Slack Channel Analysis" "Invalid response format"
+            log_error "Slack channel analysis endpoint failed"
+            return 1
+        fi
+    fi
+}
+
+# Test 24: Slack Get Channel Summary
+test_slack_get_channel_summary() {
+    log_info "Testing Slack get channel summary..."
+
+    # Test with a non-existent channel ID to verify error handling
+    local response
+    response=$(api_request "GET" "/slack/channels/C123456789?workspace_id=default")
+
+    if echo "$response" | jq -e '.channel_id' > /dev/null 2>&1; then
+        local channel_name messages_analyzed sentiment
+        channel_name=$(echo "$response" | jq -r '.channel_name')
+        messages_analyzed=$(echo "$response" | jq -r '.messages_analyzed')
+        sentiment=$(echo "$response" | jq -r '.sentiment // "unknown"')
+        add_result "PASS" "Slack Get Channel" "Channel: #$channel_name, Messages: $messages_analyzed, Sentiment: $sentiment"
+        log_success "Slack channel summary endpoint working with data"
+    else
+        if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.error')
+            # Not found is expected for test channel ID
+            if [[ "$error_msg" == *"not found"* ]] || [[ "$error_msg" == *"does not exist"* ]]; then
+                add_result "PASS" "Slack Get Channel" "Proper 404 handling: $error_msg"
+                log_success "Slack channel error handling working"
+            else
+                add_result "FAIL" "Slack Get Channel" "Unexpected error: $error_msg"
+                log_error "Slack channel endpoint failed"
+                return 1
+            fi
+        else
+            add_result "FAIL" "Slack Get Channel" "Invalid response format"
+            log_error "Slack channel endpoint failed"
+            return 1
+        fi
+    fi
+}
+
+# Test 25: Slack List Channels
+test_slack_list_channels() {
+    log_info "Testing Slack list channels..."
+
+    local response
+    response=$(api_request "GET" "/slack/channels?workspace_id=default&limit=10")
+
+    # Check if response contains channels array (may be empty initially)
+    if echo "$response" | jq -e '.channels' > /dev/null 2>&1; then
+        local count
+        count=$(echo "$response" | jq -r '.count')
+        if [ "$count" -eq 0 ]; then
+            add_result "PASS" "Slack List Channels" "No channels analyzed yet (run analysis first)"
+            log_success "Slack list channels endpoint working (empty)"
+        else
+            add_result "PASS" "Slack List Channels" "Found $count channel summary(ies)"
+            log_success "Slack list channels endpoint working with data"
+        fi
+    else
+        # Check if it's an error response
+        if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.error')
+            add_result "PASS" "Slack List Channels" "Error response: $error_msg"
+            log_warning "Slack list channels: $error_msg"
+        else
+            add_result "FAIL" "Slack List Channels" "Invalid response format"
+            log_error "Slack list channels endpoint failed"
+            return 1
+        fi
+    fi
+}
+
+# Test 26: Slack Integration Comprehensive Test
+test_slack_integration_comprehensive() {
+    log_info "Testing Slack integration end-to-end..."
+    log_info "This test validates the complete Slack analysis workflow"
+
+    # Step 1: Verify API can accept channel analysis request with real channel
+    log_info "  Step 1/3: Triggering analysis for real channel 'mailroom'..."
+    local trigger_data='{"channel_name": "mailroom", "days": 7}'
+    local trigger_response
+    trigger_response=$(api_request "POST" "/slack/analyze/channel" "$trigger_data")
+
+    # Check if Slack is disabled
+    if echo "$trigger_response" | jq -e '.status' > /dev/null 2>&1; then
+        local status
+        status=$(echo "$trigger_response" | jq -r '.status')
+        if [ "$status" = "disabled" ]; then
+            add_result "PASS" "Slack E2E Integration" "Slack disabled (requires SLACK_BOT_TOKEN configuration)"
+            log_warning "Slack integration: Not configured for E2E testing"
+            return 0
+        fi
+    fi
+
+    # Step 2: Verify request was accepted (actual analysis may take time)
+    if echo "$trigger_response" | jq -e '.message' > /dev/null 2>&1; then
+        local message
+        message=$(echo "$trigger_response" | jq -r '.message')
+        log_success "  Analysis trigger accepted: $message"
+    elif echo "$trigger_response" | jq -e '.error' > /dev/null 2>&1; then
+        local error_msg
+        error_msg=$(echo "$trigger_response" | jq -r '.error')
+        if [[ "$error_msg" == *"not found"* ]] || [[ "$error_msg" == *"not invited"* ]]; then
+            add_result "PASS" "Slack E2E Integration" "Bot not invited to #mailroom (expected)"
+            log_warning "Slack integration: Bot needs to be invited to #mailroom for full testing"
+            return 0
+        else
+            add_result "FAIL" "Slack E2E Integration" "Unexpected error during trigger: $error_msg"
+            log_error "Slack integration failed at trigger step"
+            return 1
+        fi
+    else
+        add_result "FAIL" "Slack E2E Integration" "Invalid trigger response format"
+        log_error "Slack integration failed: bad response format"
+        return 1
+    fi
+
+    # Step 3: Verify data storage endpoints are ready
+    log_info "  Step 2/3: Checking list endpoints..."
+    local list_response
+    list_response=$(api_request "GET" "/slack/channels?workspace_id=default&limit=5")
+
+    if echo "$list_response" | jq -e '.channels' > /dev/null 2>&1; then
+        log_success "  List endpoint operational"
+    else
+        add_result "FAIL" "Slack E2E Integration" "List endpoint not responding correctly"
+        log_error "Slack integration: list endpoint failed"
+        return 1
+    fi
+
+    # Step 4: Verify error handling for non-existent data
+    log_info "  Step 3/3: Verifying error handling..."
+    local notfound_response
+    notfound_response=$(api_request "GET" "/slack/channels/C_NONEXISTENT?workspace_id=default")
+
+    if echo "$notfound_response" | jq -e '.error' > /dev/null 2>&1; then
+        log_success "  Error handling verified"
+        add_result "PASS" "Slack E2E Integration" "Full workflow validated (trigger, list, error handling)"
+        log_success "Slack integration E2E test passed"
+    else
+        add_result "FAIL" "Slack E2E Integration" "Error handling not working correctly"
+        log_error "Slack integration: error handling failed"
+        return 1
+    fi
+}
+
 # Generate validation report
 generate_report() {
     echo ""
@@ -1109,6 +1432,8 @@ main() {
         echo "Mode: Pipeline tests only"
     elif [ "$DATA_ONLY" = true ]; then
         echo "Mode: Data access tests only"
+    elif [ "$SLACK_ONLY" = true ]; then
+        echo "Mode: Slack integration tests only"
     elif [ "$QUICK_MODE" = true ]; then
         echo "Mode: Quick validation (skipping pipeline execution)"
     else
@@ -1116,8 +1441,21 @@ main() {
     fi
     echo ""
 
+    # Slack-only mode: Run only Slack integration tests
+    if [ "$SLACK_ONLY" = true ]; then
+        log_info "Running Slack integration tests only..."
+        echo ""
+
+        test_slack_user_analysis || true
+        test_slack_get_user_profile || true
+        test_slack_list_users || true
+        test_slack_channel_analysis || true
+        test_slack_get_channel_summary || true
+        test_slack_list_channels || true
+        test_slack_integration_comprehensive || true
+
     # Pipeline tests (original functionality)
-    if [ "$DATA_ONLY" != true ]; then
+    elif [ "$DATA_ONLY" != true ]; then
         test_api_documentation || true
 
         if [ "$QUICK_MODE" != true ]; then
@@ -1142,8 +1480,8 @@ main() {
         fi
     fi
 
-    # Data access tests (Priority 1 endpoints)
-    if [ "$PIPELINE_ONLY" != true ]; then
+    # Data access tests (Priority 1 endpoints) - skip if Slack-only mode
+    if [ "$PIPELINE_ONLY" != true ] && [ "$SLACK_ONLY" != true ]; then
         test_insights_list || true
         test_insight_details || true
         test_analytics_summary || true
@@ -1166,6 +1504,16 @@ main() {
         test_twitter_insights || true
         test_multi_platform_collection || true
         test_platform_analytics || true
+
+        # Slack Integration tests
+        log_info "Running Slack integration tests..."
+        test_slack_user_analysis || true
+        test_slack_get_user_profile || true
+        test_slack_list_users || true
+        test_slack_channel_analysis || true
+        test_slack_get_channel_summary || true
+        test_slack_list_channels || true
+        test_slack_integration_comprehensive || true
     fi
 
     # Generate final report

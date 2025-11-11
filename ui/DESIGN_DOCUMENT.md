@@ -42,6 +42,11 @@ This document outlines the comprehensive UI/UX design for the Legal Community Fe
 /trends                # Historical trend analysis (separate page)
 /operations            # Pipeline execution monitoring
 /config                # System configuration management
+/slack/users           # Slack user profiles list (NEW!)
+/slack/users/[user_id] # Slack user profile detail (NEW!)
+/slack/channels        # Slack channel insights list (NEW!)
+/slack/channels/[channel_id] # Slack channel detail (NEW!)
+/settings/slack        # Slack configuration (NEW!)
 /api/proxy/[...path]   # API proxy to avoid CORS issues
 ```
 
@@ -52,8 +57,12 @@ This document outlines the comprehensive UI/UX design for the Legal Community Fe
 2. **Insights** - Feature request explorer with filtering
 3. **Analytics** - Summary analytics dashboard
 4. **Trends** - Historical trend analysis charts
-5. **Operations** - Pipeline execution monitoring
-6. **Config** - System configuration settings
+5. **Internal Analytics** (NEW! - Slack Section)
+   - **User Profiles** - Slack user analysis and insights
+   - **Channel Insights** - Slack channel summaries
+   - **Slack Settings** - Configuration and triggers
+6. **Operations** - Pipeline execution monitoring
+7. **Config** - System configuration settings
 
 **Layout Components:**
 - AppLayout: Main layout wrapper with Sidebar + Header
@@ -122,7 +131,7 @@ This document outlines the comprehensive UI/UX design for the Legal Community Fe
 
 ### 3.4 Multi-Platform Visual Language (NEW!)
 
-The UI now supports insights from multiple platforms (Reddit and Twitter). Visual distinction is critical for user understanding.
+The UI now supports insights from multiple platforms (Reddit, Twitter, and Slack). Visual distinction is critical for user understanding.
 
 **Platform Color Scheme:**
 ```css
@@ -136,7 +145,12 @@ The UI now supports insights from multiple platforms (Reddit and Twitter). Visua
 --twitter-bg: #eff6ff;        /* Light blue background */
 --twitter-text: #1e40af;      /* Dark blue text */
 
-/* Multi-Platform (Both) */
+/* Slack Platform (NEW!) */
+--slack-primary: #611f69;     /* Slack purple */
+--slack-bg: #faf5ff;          /* Light purple background */
+--slack-text: #581c87;        /* Dark purple text */
+
+/* Multi-Platform (All) */
 --multi-primary: #6366f1;     /* Indigo */
 --multi-bg: #f5f3ff;          /* Light purple background */
 --multi-text: #4338ca;        /* Dark indigo text */
@@ -145,6 +159,7 @@ The UI now supports insights from multiple platforms (Reddit and Twitter). Visua
 **Platform Icons:**
 - **Reddit**: `MessageSquare` icon from lucide-react (or Reddit alien icon)
 - **Twitter**: `Twitter` icon from lucide-react (bird icon)
+- **Slack**: `MessageCircle` or `Hash` icon from lucide-react (for internal team insights)
 - **Multi-Platform**: `Layers` icon from lucide-react
 
 **Platform Badges:**
@@ -159,6 +174,11 @@ The UI now supports insights from multiple platforms (Reddit and Twitter). Visua
   Twitter
 </Badge>
 
+<Badge className="bg-slack-bg text-slack-text">
+  <MessageCircle className="h-3 w-3 mr-1" />
+  Slack
+</Badge>
+
 <Badge className="bg-multi-bg text-multi-text">
   <Layers className="h-3 w-3 mr-1" />
   All Platforms
@@ -168,7 +188,7 @@ The UI now supports insights from multiple platforms (Reddit and Twitter). Visua
 **Platform Filter Dropdown:**
 ```tsx
 <Select value={platform} onValueChange={setPlatform}>
-  <SelectTrigger className="w-[180px]">
+  <SelectTrigger className="w-[200px]">
     <SelectValue placeholder="All Platforms" />
   </SelectTrigger>
   <SelectContent>
@@ -183,6 +203,10 @@ The UI now supports insights from multiple platforms (Reddit and Twitter). Visua
     <SelectItem value="twitter">
       <Twitter className="h-4 w-4 inline mr-2" />
       Twitter Only
+    </SelectItem>
+    <SelectItem value="slack">
+      <MessageCircle className="h-4 w-4 inline mr-2" />
+      Slack Only
     </SelectItem>
   </SelectContent>
 </Select>
@@ -476,6 +500,854 @@ const kpis = [
     </CardContent>
   </Card>
 </div>
+```
+
+### 4.5 Slack Internal Analytics (NEW!)
+
+**Purpose**: Slack integration provides internal team analysis capabilities, including user engagement tracking, channel insights, and team communication patterns. This is distinct from external community insights (Reddit/Twitter) as it focuses on internal team dynamics.
+
+#### 4.5.1 Slack User Profiles List (`/slack/users`)
+
+**Primary View**: Table/grid of analyzed Slack users with key metrics
+
+```tsx
+// Slack Users List Page
+<div className="space-y-6 p-6">
+  <div className="flex justify-between items-center">
+    <div>
+      <h1 className="text-3xl font-bold">Team Member Profiles</h1>
+      <p className="text-neutral-600 mt-2">
+        Analyze individual team member interests, expertise, and engagement patterns
+      </p>
+    </div>
+    <AnalysisTrigger type="user" />
+  </div>
+
+  {/* Filters */}
+  <div className="flex gap-4">
+    <Select value={workspaceId} onValueChange={setWorkspaceId}>
+      <SelectTrigger className="w-[200px]">
+        <SelectValue placeholder="Select Workspace" />
+      </SelectTrigger>
+    </Select>
+
+    <Select value={influenceFilter} onValueChange={setInfluenceFilter}>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="All Influence Levels" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All Levels</SelectItem>
+        <SelectItem value="high">High Influence</SelectItem>
+        <SelectItem value="medium">Medium Influence</SelectItem>
+        <SelectItem value="low">Low Influence</SelectItem>
+      </SelectContent>
+    </Select>
+
+    <Input
+      type="search"
+      placeholder="Search by name or email..."
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      className="w-[300px]"
+    />
+  </div>
+
+  {/* User Cards Grid */}
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {users.map((user) => (
+      <SlackUserCard key={user.user_id} user={user} />
+    ))}
+  </div>
+</div>
+```
+
+**SlackUserCard Component:**
+```tsx
+interface SlackUserCardProps {
+  user: SlackUserProfile;
+}
+
+const SlackUserCard: React.FC<SlackUserCardProps> = ({ user }) => (
+  <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+    <CardHeader>
+      <div className="flex items-center gap-3">
+        <Avatar className="h-12 w-12">
+          <AvatarFallback>{user.user_name[0]}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1">
+          <h3 className="font-semibold">{user.display_name || user.user_name}</h3>
+          <p className="text-sm text-neutral-600">{user.user_email}</p>
+        </div>
+        <Badge variant={getInfluenceBadgeVariant(user.influence_level)}>
+          {user.influence_level}
+        </Badge>
+      </div>
+    </CardHeader>
+
+    <CardContent className="space-y-4">
+      {/* Activity Metrics */}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div>
+          <p className="text-2xl font-bold text-primary">{user.total_channels}</p>
+          <p className="text-xs text-neutral-600">Channels</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-primary">{user.total_messages}</p>
+          <p className="text-xs text-neutral-600">Messages</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-primary">{user.total_activity}</p>
+          <p className="text-xs text-neutral-600">Activity</p>
+        </div>
+      </div>
+
+      {/* Top Interests */}
+      <div>
+        <p className="text-sm font-medium mb-2">Top Interests</p>
+        <div className="flex flex-wrap gap-1">
+          {user.interests.slice(0, 3).map((interest, i) => (
+            <Badge key={i} variant="outline" size="sm">{interest}</Badge>
+          ))}
+        </div>
+      </div>
+
+      {/* Communication Style */}
+      <div>
+        <p className="text-sm font-medium mb-1">Communication Style</p>
+        <p className="text-sm text-neutral-600">{user.communication_style}</p>
+      </div>
+
+      {/* View Details Button */}
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => router.push(`/slack/users/${user.user_id}`)}
+      >
+        View Full Profile
+      </Button>
+    </CardContent>
+  </Card>
+);
+```
+
+#### 4.5.2 Slack User Profile Detail (`/slack/users/[user_id]`)
+
+**Purpose**: Comprehensive view of individual user's Slack activity and AI-generated insights
+
+```tsx
+// Slack User Profile Detail Page
+<div className="container mx-auto p-6 space-y-6">
+  {/* Header */}
+  <div className="flex items-center gap-4">
+    <Avatar className="h-16 w-16">
+      <AvatarFallback>{profile.user_name[0]}</AvatarFallback>
+    </Avatar>
+    <div className="flex-1">
+      <h1 className="text-3xl font-bold">{profile.display_name || profile.user_name}</h1>
+      <p className="text-neutral-600">{profile.user_email}</p>
+      <div className="flex gap-2 mt-2">
+        <Badge variant={getInfluenceBadgeVariant(profile.influence_level)}>
+          {profile.influence_level} Influence
+        </Badge>
+        <Badge variant="outline">
+          {profile.analysis_period_days}-day analysis
+        </Badge>
+        <Badge variant="outline">
+          Last updated: {formatDistanceToNow(new Date(profile.last_updated * 1000))}
+        </Badge>
+      </div>
+    </div>
+    <Button onClick={() => triggerReanalysis(profile.user_email)}>
+      Re-analyze
+    </Button>
+  </div>
+
+  {/* Engagement Metrics */}
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <MetricCard
+      title="Total Channels"
+      value={profile.total_channels}
+      icon={Hash}
+      description={`Active in ${profile.active_channels} channels`}
+    />
+    <MetricCard
+      title="Messages Sent"
+      value={profile.total_messages}
+      icon={MessageCircle}
+      description="Total messages posted"
+    />
+    <MetricCard
+      title="Replies Made"
+      value={profile.total_replies}
+      icon={MessageSquare}
+      description="Replies to others"
+    />
+    <MetricCard
+      title="Total Activity"
+      value={profile.total_activity}
+      icon={Activity}
+      description="Combined engagement score"
+    />
+  </div>
+
+  {/* AI-Generated Persona Summary */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-purple-500" />
+        AI Persona Summary
+      </h2>
+    </CardHeader>
+    <CardContent>
+      <p className="text-neutral-700 leading-relaxed whitespace-pre-line">
+        {profile.ai_persona_summary}
+      </p>
+    </CardContent>
+  </Card>
+
+  {/* Interests & Expertise */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <Card>
+      <CardHeader>
+        <h3 className="font-semibold">Interests & Focus Areas</h3>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-2">
+          {profile.interests.map((interest, i) => (
+            <Badge key={i} variant="secondary">{interest}</Badge>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <h3 className="font-semibold">Expertise Areas</h3>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-2">
+          {profile.expertise_areas.map((area, i) => (
+            <Badge key={i} variant="outline">{area}</Badge>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+
+  {/* Channel Activity Breakdown */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold">Channel Activity Breakdown</h2>
+    </CardHeader>
+    <CardContent>
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={profile.channel_breakdown}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="channel_name" />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+          <Bar dataKey="message_count" fill="#611f69" name="Messages" />
+          <Bar dataKey="reply_count" fill="#9c27b0" name="Replies" />
+        </BarChart>
+      </ResponsiveContainer>
+
+      {/* Channel Details Table */}
+      <div className="mt-4">
+        <DataTable
+          columns={[
+            { key: 'channel_name', label: 'Channel', sortable: true },
+            { key: 'message_count', label: 'Messages', sortable: true },
+            { key: 'reply_count', label: 'Replies', sortable: true },
+            { key: 'last_activity', label: 'Last Active', sortable: true },
+          ]}
+          data={profile.channel_breakdown}
+        />
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Key Opinions & Pain Points */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <Card>
+      <CardHeader>
+        <h3 className="font-semibold text-green-700">Key Opinions</h3>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {profile.key_opinions.map((opinion, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600 mt-1 flex-shrink-0" />
+              <span className="text-sm">{opinion}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <h3 className="font-semibold text-orange-700">Pain Points</h3>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {profile.pain_points.map((pain, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-orange-600 mt-1 flex-shrink-0" />
+              <span className="text-sm">{pain}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  </div>
+
+  {/* Full AI Insights */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold flex items-center gap-2">
+        <Brain className="h-5 w-5 text-blue-500" />
+        Detailed AI Analysis
+      </h2>
+    </CardHeader>
+    <CardContent>
+      <div className="prose max-w-none">
+        <Markdown>{profile.ai_insights}</Markdown>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Metadata Footer */}
+  <div className="text-sm text-neutral-600 text-center">
+    Analysis Date: {new Date(profile.analysis_date).toLocaleDateString()} •
+    Analysis Period: {profile.analysis_period_days} days •
+    Messages Analyzed: {profile.total_messages} •
+    AI Tokens Used: {profile.ai_tokens_used.toLocaleString()}
+  </div>
+</div>
+```
+
+#### 4.5.3 Slack Channel Insights List (`/slack/channels`)
+
+**Purpose**: List of analyzed Slack channels with product insights and sentiment
+
+```tsx
+// Slack Channels List Page
+<div className="space-y-6 p-6">
+  <div className="flex justify-between items-center">
+    <div>
+      <h1 className="text-3xl font-bold">Channel Insights</h1>
+      <p className="text-neutral-600 mt-2">
+        Discover product feedback, feature requests, and strategic insights from team channels
+      </p>
+    </div>
+    <AnalysisTrigger type="channel" />
+  </div>
+
+  {/* Filters */}
+  <div className="flex gap-4">
+    <Select value={workspaceId} onValueChange={setWorkspaceId}>
+      <SelectTrigger className="w-[200px]">
+        <SelectValue placeholder="Select Workspace" />
+      </SelectTrigger>
+    </Select>
+
+    <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="All Sentiments" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All Sentiments</SelectItem>
+        <SelectItem value="positive">Positive</SelectItem>
+        <SelectItem value="neutral">Neutral</SelectItem>
+        <SelectItem value="negative">Negative</SelectItem>
+      </SelectContent>
+    </Select>
+
+    <Input
+      type="search"
+      placeholder="Search channels..."
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      className="w-[300px]"
+    />
+  </div>
+
+  {/* Channel Cards */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {channels.map((channel) => (
+      <SlackChannelCard key={channel.channel_id} channel={channel} />
+    ))}
+  </div>
+</div>
+```
+
+**SlackChannelCard Component:**
+```tsx
+const SlackChannelCard: React.FC<{ channel: SlackChannelSummary }> = ({ channel }) => (
+  <Card className="hover:shadow-lg transition-shadow">
+    <CardHeader>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Hash className="h-5 w-5 text-neutral-600" />
+          <h3 className="font-semibold text-lg">{channel.channel_name}</h3>
+          {channel.is_private && (
+            <Lock className="h-4 w-4 text-neutral-500" />
+          )}
+        </div>
+        <Badge variant={getSentimentBadgeVariant(channel.sentiment)}>
+          {channel.sentiment}
+        </Badge>
+      </div>
+      <p className="text-sm text-neutral-600 mt-1">{channel.channel_purpose}</p>
+    </CardHeader>
+
+    <CardContent className="space-y-4">
+      {/* Metrics */}
+      <div className="flex justify-around text-center">
+        <div>
+          <p className="text-xl font-bold">{channel.num_members}</p>
+          <p className="text-xs text-neutral-600">Members</p>
+        </div>
+        <div>
+          <p className="text-xl font-bold">{channel.messages_analyzed}</p>
+          <p className="text-xs text-neutral-600">Messages</p>
+        </div>
+        <div>
+          <p className="text-xl font-bold">{channel.key_topics.length}</p>
+          <p className="text-xs text-neutral-600">Topics</p>
+        </div>
+      </div>
+
+      {/* Key Topics */}
+      <div>
+        <p className="text-sm font-medium mb-2">Key Topics</p>
+        <div className="flex flex-wrap gap-1">
+          {channel.key_topics.slice(0, 4).map((topic, i) => (
+            <Badge key={i} variant="secondary" size="sm">{topic}</Badge>
+          ))}
+        </div>
+      </div>
+
+      {/* Feature Requests Count */}
+      {channel.feature_requests.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-orange-700 bg-orange-50 p-2 rounded">
+          <Lightbulb className="h-4 w-4" />
+          <span>{channel.feature_requests.length} feature request(s) identified</span>
+        </div>
+      )}
+
+      {/* Product Opportunities Count */}
+      {channel.product_opportunities.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-2 rounded">
+          <Target className="h-4 w-4" />
+          <span>{channel.product_opportunities.length} product opportunity(ies)</span>
+        </div>
+      )}
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => router.push(`/slack/channels/${channel.channel_id}`)}
+      >
+        View Full Analysis
+      </Button>
+    </CardContent>
+  </Card>
+);
+```
+
+#### 4.5.4 Slack Channel Detail (`/slack/channels/[channel_id]`)
+
+**Purpose**: Detailed channel analysis with product insights and recommendations
+
+```tsx
+// Slack Channel Detail Page
+<div className="container mx-auto p-6 space-y-6">
+  {/* Header */}
+  <div className="flex items-center justify-between">
+    <div>
+      <div className="flex items-center gap-3">
+        <Hash className="h-8 w-8 text-neutral-600" />
+        <h1 className="text-3xl font-bold">{summary.channel_name}</h1>
+        {summary.is_private && (
+          <Lock className="h-6 w-6 text-neutral-500" />
+        )}
+        <Badge variant={getSentimentBadgeVariant(summary.sentiment)} size="lg">
+          {summary.sentiment}
+        </Badge>
+      </div>
+      <p className="text-neutral-600 mt-2">{summary.channel_purpose}</p>
+      <div className="flex gap-2 mt-2">
+        <Badge variant="outline">
+          {summary.analysis_period_days}-day analysis
+        </Badge>
+        <Badge variant="outline">
+          Last updated: {formatDistanceToNow(new Date(summary.last_updated * 1000))}
+        </Badge>
+      </div>
+    </div>
+    <Button onClick={() => triggerReanalysis(summary.channel_name)}>
+      Re-analyze Channel
+    </Button>
+  </div>
+
+  {/* Key Metrics */}
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <MetricCard
+      title="Members"
+      value={summary.num_members}
+      icon={Users}
+      description="Total channel members"
+    />
+    <MetricCard
+      title="Messages Analyzed"
+      value={summary.messages_analyzed}
+      icon={MessageCircle}
+      description="Messages in analysis period"
+    />
+    <MetricCard
+      title="Key Topics"
+      value={summary.key_topics.length}
+      icon={Tag}
+      description="Main discussion themes"
+    />
+    <MetricCard
+      title="Feature Requests"
+      value={summary.feature_requests.length}
+      icon={Lightbulb}
+      description="Identified requests"
+    />
+  </div>
+
+  {/* Key Topics */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold">Key Topics & Themes</h2>
+    </CardHeader>
+    <CardContent>
+      <div className="flex flex-wrap gap-2">
+        {summary.key_topics.map((topic, i) => (
+          <Badge key={i} variant="secondary" size="lg">{topic}</Badge>
+        ))}
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Feature Requests (Highlighted) */}
+  {summary.feature_requests.length > 0 && (
+    <Card className="border-orange-200 bg-orange-50">
+      <CardHeader>
+        <h2 className="text-xl font-semibold text-orange-800 flex items-center gap-2">
+          <Lightbulb className="h-5 w-5" />
+          Feature Requests
+        </h2>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {summary.feature_requests.map((request, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="font-medium text-orange-700">{i + 1}.</span>
+              <span className="text-neutral-800">{request}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Pain Points */}
+  {summary.pain_points.length > 0 && (
+    <Card className="border-red-200 bg-red-50">
+      <CardHeader>
+        <h2 className="text-xl font-semibold text-red-800 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5" />
+          Pain Points
+        </h2>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {summary.pain_points.map((pain, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="font-medium text-red-700">{i + 1}.</span>
+              <span className="text-neutral-800">{pain}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Product Opportunities (Highlighted) */}
+  {summary.product_opportunities.length > 0 && (
+    <Card className="border-green-200 bg-green-50">
+      <CardHeader>
+        <h2 className="text-xl font-semibold text-green-800 flex items-center gap-2">
+          <Target className="h-5 w-5" />
+          Product Opportunities
+        </h2>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {summary.product_opportunities.map((opportunity, i) => (
+            <div key={i} className="bg-white p-3 rounded border border-green-200">
+              <p className="text-neutral-800">{opportunity}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Strategic Recommendations */}
+  {summary.strategic_recommendations.length > 0 && (
+    <Card className="border-blue-200 bg-blue-50">
+      <CardHeader>
+        <h2 className="text-xl font-semibold text-blue-800 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Strategic Recommendations
+        </h2>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {summary.strategic_recommendations.map((rec, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <CheckCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <span className="text-neutral-800">{rec}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Key Contributors */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold">Key Contributors</h2>
+    </CardHeader>
+    <CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {summary.key_contributors.map((contributor) => (
+          <div key={contributor.user_id} className="flex items-center gap-3 p-3 border rounded">
+            <Avatar>
+              <AvatarFallback>{contributor.user_name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <p className="font-medium">{contributor.user_name}</p>
+              <Badge variant={getContributionBadgeVariant(contributor.contribution_level)} size="sm">
+                {contributor.contribution_level}
+              </Badge>
+            </div>
+          </div>
+        ))}
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Full AI Summary */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-purple-500" />
+        AI-Generated Channel Summary
+      </h2>
+    </CardHeader>
+    <CardContent>
+      <div className="prose max-w-none">
+        <Markdown>{summary.ai_summary}</Markdown>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Metadata Footer */}
+  <div className="text-sm text-neutral-600 text-center">
+    Analysis Date: {new Date(summary.analysis_date).toLocaleDateString()} •
+    Analysis Period: {summary.analysis_period_days} days •
+    Messages Analyzed: {summary.messages_analyzed} •
+    AI Tokens Used: {summary.ai_tokens_used.toLocaleString()}
+  </div>
+</div>
+```
+
+#### 4.5.5 Slack Settings Page (`/settings/slack`)
+
+**Purpose**: Configure Slack workspace, trigger analysis, and manage settings
+
+```tsx
+// Slack Settings Page
+<div className="container mx-auto p-6 space-y-6">
+  <div>
+    <h1 className="text-3xl font-bold">Slack Configuration</h1>
+    <p className="text-neutral-600 mt-2">
+      Configure workspace settings and trigger team analysis
+    </p>
+  </div>
+
+  {/* Workspace Configuration */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold">Workspace Settings</h2>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div>
+        <label className="text-sm font-medium">Workspace ID</label>
+        <Input
+          value={workspaceId}
+          onChange={(e) => setWorkspaceId(e.target.value)}
+          placeholder="T123456789"
+        />
+        <p className="text-xs text-neutral-500 mt-1">
+          Your Slack workspace identifier
+        </p>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium">Default Analysis Period (days)</label>
+        <Input
+          type="number"
+          value={defaultDays}
+          onChange={(e) => setDefaultDays(Number(e.target.value))}
+          min="7"
+          max="90"
+        />
+      </div>
+
+      <Button onClick={saveSettings}>Save Settings</Button>
+    </CardContent>
+  </Card>
+
+  {/* Analysis Triggers */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {/* User Analysis */}
+    <Card>
+      <CardHeader>
+        <h2 className="text-xl font-semibold">Analyze Team Member</h2>
+      </CardHeader>
+      <CardContent>
+        <AnalysisTrigger type="user" />
+      </CardContent>
+    </Card>
+
+    {/* Channel Analysis */}
+    <Card>
+      <CardHeader>
+        <h2 className="text-xl font-semibold">Analyze Channel</h2>
+      </CardHeader>
+      <CardContent>
+        <AnalysisTrigger type="channel" />
+      </CardContent>
+    </Card>
+  </div>
+
+  {/* Bot Permissions */}
+  <Card>
+    <CardHeader>
+      <h2 className="text-xl font-semibold">Bot Permissions</h2>
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <span className="text-sm">channels:history - Read public channel messages</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <span className="text-sm">channels:read - List public channels</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <span className="text-sm">users:read - View people in workspace</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <span className="text-sm">users:read.email - View email addresses</span>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+</div>
+```
+
+**AnalysisTrigger Component:**
+```tsx
+interface AnalysisTriggerProps {
+  type: 'user' | 'channel';
+}
+
+const AnalysisTrigger: React.FC<AnalysisTriggerProps> = ({ type }) => {
+  const [formData, setFormData] = useState({});
+  const analyzeUser = useAnalyzeSlackUser();
+  const analyzeChannel = useAnalyzeSlackChannel();
+
+  const handleSubmit = async () => {
+    try {
+      if (type === 'user') {
+        await analyzeUser.mutateAsync(formData);
+        toast.success('User analysis started! Results will be available in 2-5 minutes.');
+      } else {
+        await analyzeChannel.mutateAsync(formData);
+        toast.success('Channel analysis started! Results will be available in 1-3 minutes.');
+      }
+    } catch (error) {
+      toast.error(`Analysis failed: ${error.message}`);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {type === 'user' ? (
+        <>
+          <div>
+            <label className="text-sm font-medium">User Email or ID</label>
+            <Input
+              placeholder="user@example.com or U123456789"
+              value={formData.user_email || formData.user_id || ''}
+              onChange={(e) => setFormData({ ...formData, user_email: e.target.value })}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <label className="text-sm font-medium">Channel Name or ID</label>
+            <Input
+              placeholder="general or C123456789"
+              value={formData.channel_name || formData.channel_id || ''}
+              onChange={(e) => setFormData({ ...formData, channel_name: e.target.value })}
+            />
+          </div>
+        </>
+      )}
+
+      <div>
+        <label className="text-sm font-medium">Analysis Period (days)</label>
+        <Input
+          type="number"
+          value={formData.days || 30}
+          onChange={(e) => setFormData({ ...formData, days: Number(e.target.value) })}
+          min="7"
+          max="90"
+        />
+      </div>
+
+      <Button
+        onClick={handleSubmit}
+        disabled={analyzeUser.isPending || analyzeChannel.isPending}
+        className="w-full"
+      >
+        {analyzeUser.isPending || analyzeChannel.isPending ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Analyzing...
+          </>
+        ) : (
+          `Analyze ${type === 'user' ? 'User' : 'Channel'}`
+        )}
+      </Button>
+    </div>
+  );
+};
 ```
 
 ---

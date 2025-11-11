@@ -12,9 +12,22 @@ PRIORITY_SCORE_THRESHOLD = 5
 def handler(event, context):
     """
     Lambda handler for storing analyzed insights to DynamoDB
+
+    Note: Slack data is not processed here - it's already stored by the Slack Collector Lambda
+    directly to the supio-slack-profiles DynamoDB table
     """
     print(f"Starting storage with event: {json.dumps(event)}")
-    
+
+    # Check if this is Slack data (should be skipped)
+    platform = event.get('platform', 'unknown')
+    if platform == 'slack':
+        print("Skipping Slack data storage - already handled by Slack Collector")
+        return {
+            'statusCode': 200,
+            'message': 'Slack data already stored',
+            'insights_stored': 0
+        }
+
     # Get S3 location from previous step
     s3_location = event.get('s3_location')
     if not s3_location:

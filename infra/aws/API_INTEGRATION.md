@@ -2,20 +2,21 @@
 
 ## Overview
 
-The Legal Tech Intelligence API provides REST endpoints for triggering and monitoring data collection from **multiple sources** (Reddit and Twitter/X). The API supports parallel collection, platform filtering, and unified analytics across all platforms. This API is designed to be consumed by the Cloudflare Workers API Gateway and the Next.js frontend.
+The Legal Tech Intelligence API provides REST endpoints for triggering and monitoring data collection from **multiple sources** (Reddit, Twitter/X, and Slack). The API supports parallel collection, platform filtering, and unified analytics across all platforms. This API is designed to be consumed by the Cloudflare Workers API Gateway and the Next.js frontend.
 
 ## Architecture
 
 The API is implemented as a dedicated AWS Lambda function (`/infra/aws/lambda/api/index.py`) that integrates with:
-- **AWS Step Functions** to orchestrate parallel multi-source collection pipeline (Reddit + Twitter)
-- **DynamoDB** to read insights, manage system configuration, and track platform sources
+- **AWS Step Functions** to orchestrate parallel multi-source collection pipeline (Reddit + Twitter + Slack)
+- **DynamoDB** to read insights, manage system configuration, track platform sources, and store Slack profiles
 - **CloudWatch** for execution logs and monitoring
 - **Twitter API v2** via Tweepy for Twitter data collection
 - **Reddit API** via PRAW for Reddit data collection
+- **Slack API** via Slack SDK for internal team analysis
 
 **Key Features:**
-- Single Lambda function handles all 14 REST endpoints
-- **Multi-platform support**: Collect from Reddit and Twitter in parallel
+- Single Lambda function handles all 20 REST endpoints (14 existing + 6 Slack)
+- **Multi-platform support**: Collect from Reddit, Twitter, and Slack in parallel
 - **Platform filtering**: Filter insights and analytics by source platform
 - **Platform metadata**: Track platform-specific metrics (Reddit scores, Twitter engagement)
 - Python 3.12 runtime with shared dependencies layer (tweepy + praw)
@@ -61,7 +62,13 @@ Get API information and available endpoints.
     "GET /logs/{executionName}": "Get execution logs",
     "GET /config": "Get system configuration",
     "PUT /config": "Update system configuration",
-    "GET /health": "System health check"
+    "GET /health": "System health check",
+    "POST /slack/analyze/user": "Trigger Slack user analysis",
+    "GET /slack/users/{user_id}": "Get Slack user profile",
+    "GET /slack/users": "List Slack user profiles",
+    "POST /slack/analyze/channel": "Trigger Slack channel analysis",
+    "GET /slack/channels/{channel_id}": "Get Slack channel summary",
+    "GET /slack/channels": "List Slack channel summaries"
   },
   "trigger_parameters": {
     "platforms": "array of platforms: reddit, twitter (optional, default: both)",
@@ -761,16 +768,300 @@ Get detailed execution logs for debugging, troubleshooting, and operational visi
 }
 ```
 
+## Slack API Endpoints
+
+The API provides endpoints for analyzing Slack workspace data to gain insights into internal team communication, user engagement, and channel activity. These endpoints enable **internal team analytics** separate from external community insights (Reddit/Twitter).
+
+### 15. POST /slack/analyze/user - Trigger Slack User Analysis
+
+Analyze a Slack user's interests, opinions, expertise areas, and engagement patterns across channels.
+
+**Request Body:**
+```json
+{
+  "user_email": "user@example.com",
+  "user_id": "U123456789",
+  "days": 30,
+  "workspace_id": "T123456789"
+}
+```
+
+**Parameters:**
+- `user_email` (optional): User's email address (either email or user_id required)
+- `user_id` (optional): Slack user ID (either email or user_id required)
+- `days` (optional): Number of days to analyze (default: 30)
+- `workspace_id` (optional): Slack workspace ID (default: configured workspace)
+
+**Response:** `202 Accepted`
+```json
+{
+  "message": "User analysis started",
+  "request_id": "abc-123",
+  "user_id": "U123456789",
+  "estimated_completion": "2-5 minutes"
+}
+```
+
+**Use Case:** Understand individual team member's focus areas, expertise, communication patterns, and pain points for better team alignment and resource allocation.
+
+### 16. GET /slack/users/{user_id} - Get Slack User Profile
+
+Get detailed profile and analysis for a specific Slack user.
+
+**Path Parameters:**
+- `user_id`: Slack user ID (e.g., U123456789)
+
+**Query Parameters:**
+- `workspace_id` (optional): Slack workspace ID (default: configured workspace)
+
+**Response:** `200 OK`
+```json
+{
+  "user_id": "U123456789",
+  "workspace_id": "T123456789",
+  "user_email": "john@example.com",
+  "user_name": "john.doe",
+  "display_name": "John Doe",
+  "total_channels": 15,
+  "active_channels": 8,
+  "total_messages": 342,
+  "total_replies": 89,
+  "total_activity": 431,
+  "analysis_date": "2025-01-16",
+  "analysis_period_days": 30,
+  "interests": [
+    "Product development",
+    "AI/ML integration",
+    "Customer feedback analysis"
+  ],
+  "expertise_areas": [
+    "Machine learning",
+    "API design",
+    "Data analysis"
+  ],
+  "communication_style": "Technical and detail-oriented, prefers data-driven discussions",
+  "key_opinions": [
+    "Advocates for AI-powered automation in medical records processing",
+    "Prefers incremental releases over big-bang deployments"
+  ],
+  "pain_points": [
+    "Manual data entry processes",
+    "Lack of integration between tools",
+    "Slow customer feedback loops"
+  ],
+  "influence_level": "high",
+  "channel_breakdown": [
+    {
+      "channel_id": "C123456",
+      "channel_name": "product",
+      "message_count": 145,
+      "reply_count": 42,
+      "last_activity": "2025-01-15T10:30:00Z",
+      "ai_summary": "Leads discussions on AI feature roadmap and medical records automation"
+    }
+  ],
+  "ai_insights": "John is a highly engaged technical leader...",
+  "ai_persona_summary": "Technical Product Leader with AI/ML focus...",
+  "ai_tokens_used": 12500,
+  "last_updated": 1705420800
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "error": "User profile not found"
+}
+```
+
+### 17. GET /slack/users - List Slack User Profiles
+
+List all analyzed Slack user profiles with optional filtering.
+
+**Query Parameters:**
+- `workspace_id` (optional): Filter by workspace ID (default: configured workspace)
+- `limit` (optional): Number of results to return (default: 50, max: 100)
+- `influence_level` (optional): Filter by influence level (high, medium, low)
+- `sort_by` (optional): Sort by field (activity, last_updated, influence_level) (default: last_updated)
+
+**Response:** `200 OK`
+```json
+{
+  "users": [
+    {
+      "user_id": "U123456789",
+      "user_name": "john.doe",
+      "display_name": "John Doe",
+      "user_email": "john@example.com",
+      "total_activity": 431,
+      "influence_level": "high",
+      "active_channels": 8,
+      "last_updated": 1705420800,
+      "top_interests": ["Product development", "AI/ML integration"]
+    }
+  ],
+  "count": 15,
+  "workspace_id": "T123456789"
+}
+```
+
+### 18. POST /slack/analyze/channel - Trigger Slack Channel Analysis
+
+Analyze a Slack channel for key topics, feature requests, pain points, sentiment, and product opportunities.
+
+**Request Body:**
+```json
+{
+  "channel_name": "general",
+  "channel_id": "C123456789",
+  "days": 30,
+  "workspace_id": "T123456789"
+}
+```
+
+**Parameters:**
+- `channel_name` (optional): Channel name without # (either name or id required)
+- `channel_id` (optional): Slack channel ID (either name or id required)
+- `days` (optional): Number of days to analyze (default: 30)
+- `workspace_id` (optional): Slack workspace ID (default: configured workspace)
+
+**Response:** `202 Accepted`
+```json
+{
+  "message": "Channel analysis started",
+  "request_id": "def-456",
+  "channel_id": "C123456789",
+  "estimated_completion": "1-3 minutes"
+}
+```
+
+**Use Case:** Understand channel-specific discussions, identify feature requests, gauge team sentiment, and discover product opportunities from internal conversations.
+
+### 19. GET /slack/channels/{channel_id} - Get Slack Channel Summary
+
+Get detailed analysis and insights for a specific Slack channel.
+
+**Path Parameters:**
+- `channel_id`: Slack channel ID (e.g., C123456789)
+
+**Query Parameters:**
+- `workspace_id` (optional): Slack workspace ID (default: configured workspace)
+
+**Response:** `200 OK`
+```json
+{
+  "channel_id": "C123456789",
+  "workspace_id": "T123456789",
+  "channel_name": "product-feedback",
+  "is_private": false,
+  "num_members": 42,
+  "analysis_date": "2025-01-16",
+  "analysis_period_days": 30,
+  "messages_analyzed": 485,
+  "channel_purpose": "Product feedback and feature requests from internal team",
+  "key_topics": [
+    "Medical records automation",
+    "UI/UX improvements",
+    "Integration requests",
+    "Performance optimization"
+  ],
+  "feature_requests": [
+    "Batch processing for medical chronologies",
+    "Custom report templates",
+    "Mobile app for attorneys",
+    "Integration with CaseManagement Pro"
+  ],
+  "pain_points": [
+    "Slow processing time for large document sets",
+    "Manual data entry for patient information",
+    "Limited export format options"
+  ],
+  "sentiment": "positive",
+  "key_contributors": [
+    {
+      "user_id": "U123456",
+      "user_name": "jane.product",
+      "contribution_level": "high"
+    }
+  ],
+  "product_opportunities": [
+    "Build batch processing feature - high demand from sales team",
+    "Develop mobile app - attorneys want on-the-go access",
+    "Create integrations marketplace - multiple CRM requests"
+  ],
+  "strategic_recommendations": [
+    "Prioritize batch processing - mentioned in 23 messages",
+    "Survey team on mobile app requirements",
+    "Evaluate CaseManagement Pro integration ROI"
+  ],
+  "ai_summary": "The product-feedback channel shows strong engagement...",
+  "ai_tokens_used": 15200,
+  "last_updated": 1705420800
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "error": "Channel summary not found"
+}
+```
+
+### 20. GET /slack/channels - List Slack Channel Summaries
+
+List all analyzed Slack channel summaries with optional filtering.
+
+**Query Parameters:**
+- `workspace_id` (optional): Filter by workspace ID (default: configured workspace)
+- `limit` (optional): Number of results to return (default: 50, max: 100)
+- `sentiment` (optional): Filter by sentiment (positive, neutral, negative)
+- `sort_by` (optional): Sort by field (messages_analyzed, last_updated, num_members) (default: last_updated)
+
+**Response:** `200 OK`
+```json
+{
+  "channels": [
+    {
+      "channel_id": "C123456789",
+      "channel_name": "product-feedback",
+      "is_private": false,
+      "num_members": 42,
+      "messages_analyzed": 485,
+      "sentiment": "positive",
+      "key_topics": ["Medical records automation", "UI/UX improvements"],
+      "feature_requests_count": 15,
+      "last_updated": 1705420800
+    }
+  ],
+  "count": 8,
+  "workspace_id": "T123456789"
+}
+```
+
+### Slack Analysis Workflow
+
+**Typical Usage Pattern:**
+1. Trigger analysis: `POST /slack/analyze/user` or `POST /slack/analyze/channel`
+2. Wait 1-5 minutes for AI analysis to complete
+3. Retrieve results: `GET /slack/users/{user_id}` or `GET /slack/channels/{channel_id}`
+4. Browse all profiles: `GET /slack/users` or `GET /slack/channels`
+
+**Re-analysis:**
+- Slack profiles and channel summaries are cached in DynamoDB with 180-day TTL
+- Re-trigger analysis to get fresh insights after significant time has passed
+- Useful for tracking changes in user interests or channel sentiment over time
+
 ## Multi-Platform Support
 
 ### Platform Architecture
 
 The API supports collecting and analyzing data from multiple platforms simultaneously:
 
-1. **Parallel Collection**: Reddit and Twitter collectors run in parallel via Step Functions
+1. **Parallel Collection**: Reddit, Twitter, and Slack collectors run in parallel via Step Functions
 2. **Unified Format**: All platforms convert to unified data format for analysis
 3. **Platform Tracking**: Each insight tagged with `source_type` field
 4. **Platform Filtering**: Filter insights and analytics by platform
+5. **Dedicated Storage**: Slack data stored in separate `supio-slack-profiles` DynamoDB table
 
 ### Platform-Specific Behavior
 
@@ -779,6 +1070,7 @@ The API supports collecting and analyzing data from multiple platforms simultane
 - Collects from specified subreddits
 - Tracks: post_score, upvote_ratio, subreddit, flair
 - Rate limit: Reddit API limits (varies by app)
+- Focus: External community feedback
 
 **Twitter:**
 - Uses Tweepy (Twitter API v2 client)
@@ -786,24 +1078,34 @@ The API supports collecting and analyzing data from multiple platforms simultane
 - Tracks: likes, retweets, replies, quotes, engagement_score
 - Rate limit: Tier-dependent (Basic: 15 requests per 15 minutes)
 - Timeout handling: Stops gracefully before Lambda timeout
+- Focus: External community feedback
+
+**Slack:**
+- Uses Slack SDK (Python)
+- Analyzes internal workspace conversations
+- Tracks: user engagement, channel activity, interests, opinions
+- Storage: Dedicated `supio-slack-profiles` DynamoDB table (separate from insights)
+- TTL: 180 days for Slack profiles
+- Rate limit: Slack API standard limits
+- Focus: Internal team analytics
 
 ### Data Flow
 
 ```
-POST /trigger {"platforms": ["reddit", "twitter"]}
+POST /trigger {"platforms": ["reddit", "twitter", "slack"]}
     ↓
 Step Functions: Parallel State
-    ├─→ Reddit Collector Lambda
-    └─→ Twitter Collector Lambda
+    ├─→ Reddit Collector Lambda → Analyzer → Storer → DynamoDB (supio-insights)
+    ├─→ Twitter Collector Lambda → Analyzer → Storer → DynamoDB (supio-insights)
+    └─→ Slack Collector Lambda → S3 + DynamoDB (supio-slack-profiles)
         ↓
-    Analyzer Lambda (processes both)
+    Results aggregated
         ↓
-    Storer Lambda (tags with source_type)
-        ↓
-    DynamoDB (insights with platform metadata)
-        ↓
-GET /insights?platform=twitter
+GET /insights?platform=twitter (external insights)
+GET /slack/users (internal analytics)
 ```
+
+**Note:** Slack data flows directly to `supio-slack-profiles` table, bypassing the analyzer/storer pipeline since analysis is performed inline by the Slack Collector Lambda using Amazon Bedrock.
 
 ### Platform Filtering Best Practices
 

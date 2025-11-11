@@ -16,7 +16,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Panda,
-  PawPrint
+  PawPrint,
+  Users,
+  Hash,
+  MessageCircle,
 } from 'lucide-react';
 
 const navigationItems = [
@@ -55,6 +58,28 @@ const navigationItems = [
     href: '/config',
     icon: Settings,
     view: 'config'
+  }
+];
+
+// Slack Internal Analytics Section
+const slackNavigationItems = [
+  {
+    label: 'User Profiles',
+    href: '/slack/users',
+    icon: Users,
+    view: 'slack-users'
+  },
+  {
+    label: 'Channel Insights',
+    href: '/slack/channels',
+    icon: Hash,
+    view: 'slack-channels'
+  },
+  {
+    label: 'Slack Settings',
+    href: '/settings/slack',
+    icon: MessageCircle,
+    view: 'slack-settings'
   }
 ];
 
@@ -121,9 +146,51 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="p-2 space-y-1">
+      <nav className="p-2 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+        {/* Main Navigation */}
         {navigationItems.map((item) => {
           const isActive = pathname === item.href;
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => handleViewChange(item.view)}
+              className={cn(
+                'flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
+                'hover:bg-accent hover:text-accent-foreground',
+                isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground',
+                collapsed && 'justify-center px-2'
+              )}
+            >
+              <Icon className={cn('h-5 w-5 flex-shrink-0')} />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
+
+        {/* Separator */}
+        {!collapsed && (
+          <div className="py-2">
+            <div className="border-t border-border" />
+            <p className="text-xs font-semibold text-muted-foreground px-3 py-2 mt-2">
+              INTERNAL ANALYTICS
+            </p>
+          </div>
+        )}
+
+        {collapsed && (
+          <div className="py-1">
+            <div className="border-t border-border mx-2" />
+          </div>
+        )}
+
+        {/* Slack Navigation */}
+        {slackNavigationItems.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href);
           const Icon = item.icon;
 
           return (

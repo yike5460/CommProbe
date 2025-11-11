@@ -51,6 +51,24 @@ export class LegalCrawlerStack extends Stack {
     }
 
     // ===========================================
+    // Get Slack API credentials from context
+    // ===========================================
+    const slackBotToken = this.node.tryGetContext('slackBotToken');
+
+    // Slack is optional - can deploy without Slack enabled
+    if (!slackBotToken) {
+      console.warn(
+        '⚠️  Slack Bot Token not provided. Slack analysis will be disabled.\n' +
+        'To enable Slack, provide credentials using:\n' +
+        'npx cdk deploy \\\n' +
+        '  --context redditClientId=YOUR_REDDIT_ID \\\n' +
+        '  --context redditClientSecret=YOUR_REDDIT_SECRET \\\n' +
+        '  --context twitterBearerToken=YOUR_TWITTER_TOKEN \\\n' +
+        '  --context slackBotToken=xoxb-YOUR-SLACK-BOT-TOKEN'
+      );
+    }
+
+    // ===========================================
     // S3 Buckets
     // ===========================================
     const rawDataBucket = new s3.Bucket(this, 'RawDataBucket', {
@@ -123,6 +141,38 @@ export class LegalCrawlerStack extends Stack {
       },
     });
 
+    // Slack Profiles Table
+    const slackProfilesTable = new dynamodb.Table(this, 'SlackProfilesTable', {
+      tableName: 'supio-slack-profiles',
+      partitionKey: {
+        name: 'PK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'SK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl', // Auto-cleanup after 180 days
+      removalPolicy: RemovalPolicy.RETAIN, // Keep Slack data even if stack is deleted
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+    });
+
+    // Add GSI for workspace-wide queries
+    slackProfilesTable.addGlobalSecondaryIndex({
+      indexName: 'WorkspaceIndex',
+      partitionKey: {
+        name: 'workspace_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'last_updated',
+        type: dynamodb.AttributeType.NUMBER,
+      },
+    });
+
     // ===========================================
     // Lambda Layer for Python Dependencies
     // ===========================================
@@ -184,6 +234,45 @@ export class LegalCrawlerStack extends Stack {
 
     // Grant S3 permissions to Twitter collector
     rawDataBucket.grantReadWrite(twitterCollectorFunction);
+
+    // Slack Collector Lambda
+    const slackCollectorFunction = new lambda.Function(this, 'SlackCollectorFunction', {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/collector/slack')),
+      handler: 'index.handler',
+      timeout: Duration.minutes(15), // Higher timeout for AI analysis
+      memorySize: 2048, // Higher memory for Bedrock AI analysis
+      environment: {
+        BUCKET_NAME: rawDataBucket.bucketName,
+        SLACK_BOT_TOKEN: slackBotToken || 'DISABLED',
+        SLACK_PROFILES_TABLE: slackProfilesTable.tableName,
+        AWS_BEDROCK_REGION: this.region,
+        MODEL_ID: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      },
+      layers: [dependenciesLayer],
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant S3 permissions to Slack collector
+    rawDataBucket.grantReadWrite(slackCollectorFunction);
+
+    // Grant DynamoDB permissions to Slack collector
+    slackProfilesTable.grantReadWriteData(slackCollectorFunction);
+
+    // Grant Bedrock permissions to Slack collector (inline AI analysis)
+    slackCollectorFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:InvokeModel'],
+        resources: [
+          `arn:aws:bedrock:${this.region}::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+        ],
+      })
+    );
 
     // Analyzer Lambda (Bedrock integration)
     const analyzerFunction = new lambda.Function(this, 'AnalyzerFunction', {
@@ -255,6 +344,10 @@ export class LegalCrawlerStack extends Stack {
       outputPath: '$.Payload',
     });
 
+    // NOTE: Slack collector is NOT part of the Step Functions pipeline
+    // Slack has a different event structure and is only invoked directly by API Lambda
+    // via dedicated endpoints: POST /slack/analyze/user and POST /slack/analyze/channel
+
     const analyzeTask = new sfnTasks.LambdaInvoke(this, 'AnalyzePosts', {
       lambdaFunction: analyzerFunction,
       outputPath: '$.Payload',
@@ -266,12 +359,13 @@ export class LegalCrawlerStack extends Stack {
     });
 
     // Create parallel collection state for Reddit + Twitter
+    // NOTE: Slack is NOT included here - it's invoked separately via API endpoints
     const parallelCollection = new sfn.Parallel(this, 'ParallelCollection', {
       comment: 'Collect from Reddit and Twitter in parallel',
       resultPath: '$.collectionResults',
     });
 
-    // Add both collection branches
+    // Add Reddit and Twitter collection branches
     parallelCollection.branch(collectRedditTask);
     parallelCollection.branch(collectTwitterTask);
 
@@ -297,10 +391,10 @@ export class LegalCrawlerStack extends Stack {
     // EventBridge Scheduling
     // ===========================================
 
-    // Weekly schedule for multi-source (Reddit + Twitter) collection
+    // Weekly schedule for multi-source (Reddit + Twitter + Slack) collection
     new events.Rule(this, 'WeeklyMultiSourceCollection', {
       ruleName: 'supio-weekly-multi-source-insights',
-      description: 'Trigger Reddit and Twitter collection every Monday morning',
+      description: 'Trigger Reddit, Twitter, and Slack collection every Monday morning',
       schedule: events.Schedule.cron({
         minute: '0',
         hour: '2',
@@ -365,6 +459,8 @@ def handler(event, context):
         STATE_MACHINE_ARN: stateMachine.stateMachineArn,
         INSIGHTS_TABLE_NAME: insightsTable.tableName,
         CONFIG_TABLE_NAME: configTable.tableName,
+        SLACK_PROFILES_TABLE_NAME: slackProfilesTable.tableName,
+        SLACK_COLLECTOR_FUNCTION_NAME: slackCollectorFunction.functionName,
       },
       layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -373,6 +469,12 @@ def handler(event, context):
     // Grant permissions to API function
     stateMachine.grantStartExecution(apiFunction);
     stateMachine.grantRead(apiFunction);
+
+    // Grant permissions to invoke Slack collector Lambda
+    slackCollectorFunction.grantInvoke(apiFunction);
+
+    // Grant DynamoDB permissions for Slack profiles
+    slackProfilesTable.grantReadWriteData(apiFunction);
 
     // Grant explicit Step Functions execution management permissions
     // Note: Execution ARN pattern is different from state machine ARN pattern
@@ -466,11 +568,35 @@ def handler(event, context):
     const healthResource = api.root.addResource('health');
     healthResource.addMethod('GET', lambdaIntegration); // GET /health
 
+    // Slack API Endpoints
+    const slackResource = api.root.addResource('slack');
+
+    // User analysis endpoints
+    const slackAnalyzeResource = slackResource.addResource('analyze');
+    const slackAnalyzeUserResource = slackAnalyzeResource.addResource('user');
+    slackAnalyzeUserResource.addMethod('POST', lambdaIntegration); // POST /slack/analyze/user
+
+    const slackUsersResource = slackResource.addResource('users');
+    slackUsersResource.addMethod('GET', lambdaIntegration); // GET /slack/users
+
+    const slackUserByIdResource = slackUsersResource.addResource('{user_id}');
+    slackUserByIdResource.addMethod('GET', lambdaIntegration); // GET /slack/users/{user_id}
+
+    // Channel analysis endpoints
+    const slackAnalyzeChannelResource = slackAnalyzeResource.addResource('channel');
+    slackAnalyzeChannelResource.addMethod('POST', lambdaIntegration); // POST /slack/analyze/channel
+
+    const slackChannelsResource = slackResource.addResource('channels');
+    slackChannelsResource.addMethod('GET', lambdaIntegration); // GET /slack/channels
+
+    const slackChannelByIdResource = slackChannelsResource.addResource('{channel_id}');
+    slackChannelByIdResource.addMethod('GET', lambdaIntegration); // GET /slack/channels/{channel_id}
+
     // Output the API URL
     new CfnOutput(this, 'ApiUrl', {
       value: api.url,
-      description: 'URL of the Reddit Crawler API',
-      exportName: 'RedditCrawlerApiUrl',
+      description: 'URL of the Multi-Source Intelligence API (Reddit + Twitter + Slack)',
+      exportName: 'MultiSourceInsightsApiUrl',
     });
 
     // Output the API Key for external access (if needed)

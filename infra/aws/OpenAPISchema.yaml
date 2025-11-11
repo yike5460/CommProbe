@@ -580,6 +580,247 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /slack/analyze/user:
+    post:
+      summary: Analyze Slack User
+      description: |
+        Trigger asynchronous analysis of a Slack user's activity, interests, and engagement patterns.
+        Analysis typically completes in 2-5 minutes depending on message volume.
+      operationId: analyzeSlackUser
+      tags:
+        - Slack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlackUserAnalysisRequest'
+            examples:
+              by_email:
+                summary: Analyze user by email
+                value:
+                  user_email: "user@example.com"
+                  days: 30
+              by_user_id:
+                summary: Analyze user by Slack user ID
+                value:
+                  user_id: "U123456789"
+                  days: 30
+                  workspace_id: "T123456789"
+      responses:
+        '202':
+          description: Analysis started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /slack/users/{user_id}:
+    get:
+      summary: Get Slack User Profile
+      description: |
+        Retrieve analyzed user profile including interests, expertise, communication style,
+        and channel activity breakdown.
+      operationId: getSlackUserProfile
+      tags:
+        - Slack
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: Slack user ID
+          schema:
+            type: string
+            pattern: '^U[A-Z0-9]{8,}$'
+            example: "U123456789"
+        - name: workspace_id
+          in: query
+          required: false
+          description: Slack workspace ID
+          schema:
+            type: string
+            default: "default"
+            example: "T123456789"
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackUserProfile'
+        '404':
+          description: User profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /slack/users:
+    get:
+      summary: List Slack User Profiles
+      description: |
+        Get list of all analyzed user profiles in a workspace with optional filtering
+        and pagination support.
+      operationId: listSlackUsers
+      tags:
+        - Slack
+      parameters:
+        - name: workspace_id
+          in: query
+          required: false
+          description: Filter by workspace ID
+          schema:
+            type: string
+            default: "default"
+            example: "T123456789"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of user profiles to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: User profiles list retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackUserListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /slack/analyze/channel:
+    post:
+      summary: Analyze Slack Channel
+      description: |
+        Trigger asynchronous analysis of a Slack channel for product insights, feature requests,
+        sentiment analysis, and strategic recommendations.
+        Analysis typically completes in 1-3 minutes depending on message volume.
+      operationId: analyzeSlackChannel
+      tags:
+        - Slack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlackChannelAnalysisRequest'
+            examples:
+              by_name:
+                summary: Analyze channel by name
+                value:
+                  channel_name: "general"
+                  days: 30
+              by_channel_id:
+                summary: Analyze channel by ID
+                value:
+                  channel_id: "C123456789"
+                  days: 30
+                  workspace_id: "T123456789"
+      responses:
+        '202':
+          description: Analysis started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /slack/channels/{channel_id}:
+    get:
+      summary: Get Slack Channel Summary
+      description: |
+        Retrieve analyzed channel summary including key topics, feature requests,
+        pain points, sentiment, and strategic recommendations.
+      operationId: getSlackChannelSummary
+      tags:
+        - Slack
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          description: Slack channel ID
+          schema:
+            type: string
+            pattern: '^C[A-Z0-9]{8,}$'
+            example: "C123456789"
+        - name: workspace_id
+          in: query
+          required: false
+          description: Slack workspace ID
+          schema:
+            type: string
+            default: "default"
+            example: "T123456789"
+      responses:
+        '200':
+          description: Channel summary retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackChannelSummary'
+        '404':
+          description: Channel summary not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /slack/channels:
+    get:
+      summary: List Slack Channel Summaries
+      description: |
+        Get list of all analyzed channel summaries in a workspace with optional filtering
+        and pagination support.
+      operationId: listSlackChannels
+      tags:
+        - Slack
+      parameters:
+        - name: workspace_id
+          in: query
+          required: false
+          description: Filter by workspace ID
+          schema:
+            type: string
+            default: "default"
+            example: "T123456789"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of channel summaries to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Channel summaries list retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackChannelListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1880,6 +2121,329 @@ components:
           description: Additional error details if available
           example: "days_back must be a positive integer"
 
+    SlackUserAnalysisRequest:
+      type: object
+      description: Request body for triggering Slack user analysis
+      properties:
+        user_email:
+          type: string
+          format: email
+          description: User's email address (alternative to user_id)
+          example: "user@example.com"
+        user_id:
+          type: string
+          description: Slack user ID (alternative to user_email)
+          pattern: '^U[A-Z0-9]{8,}$'
+          example: "U123456789"
+        days:
+          type: integer
+          minimum: 1
+          maximum: 90
+          default: 30
+          description: Number of days to analyze
+          example: 30
+        workspace_id:
+          type: string
+          description: Slack workspace ID
+          example: "T123456789"
+      oneOf:
+        - required: [user_email]
+        - required: [user_id]
+
+    SlackChannelAnalysisRequest:
+      type: object
+      description: Request body for triggering Slack channel analysis
+      properties:
+        channel_name:
+          type: string
+          description: Channel name (alternative to channel_id)
+          example: "general"
+        channel_id:
+          type: string
+          description: Slack channel ID (alternative to channel_name)
+          pattern: '^C[A-Z0-9]{8,}$'
+          example: "C123456789"
+        days:
+          type: integer
+          minimum: 1
+          maximum: 90
+          default: 30
+          description: Number of days to analyze
+          example: 30
+        workspace_id:
+          type: string
+          description: Slack workspace ID
+          example: "T123456789"
+      oneOf:
+        - required: [channel_name]
+        - required: [channel_id]
+
+    SlackAnalysisResponse:
+      type: object
+      required:
+        - message
+        - request_id
+      properties:
+        message:
+          type: string
+          example: "User analysis started"
+        request_id:
+          type: string
+          example: "abc-123"
+        estimated_completion:
+          type: string
+          example: "2-5 minutes"
+
+    SlackUserProfile:
+      type: object
+      required:
+        - user_id
+        - workspace_id
+        - user_email
+        - user_name
+        - total_channels
+        - active_channels
+        - total_messages
+        - total_replies
+        - total_activity
+        - analysis_date
+        - analysis_period_days
+        - last_updated
+      properties:
+        user_id:
+          type: string
+          example: "U123456789"
+        workspace_id:
+          type: string
+          example: "T123456789"
+        user_email:
+          type: string
+          format: email
+          example: "user@example.com"
+        user_name:
+          type: string
+          example: "John Doe"
+        display_name:
+          type: string
+          nullable: true
+          example: "JD"
+        total_channels:
+          type: integer
+          description: Total number of channels user has access to
+          example: 15
+        active_channels:
+          type: integer
+          description: Number of channels user is active in
+          example: 8
+        total_messages:
+          type: integer
+          description: Total number of messages sent
+          example: 245
+        total_replies:
+          type: integer
+          description: Total number of replies received
+          example: 89
+        total_activity:
+          type: integer
+          description: Combined total of messages and replies
+          example: 334
+        analysis_date:
+          type: string
+          format: date-time
+          example: "2025-01-07T12:00:00Z"
+        analysis_period_days:
+          type: integer
+          example: 30
+        interests:
+          type: array
+          items:
+            type: string
+          example: ["Product Development", "Customer Success", "AI/ML"]
+        expertise_areas:
+          type: array
+          items:
+            type: string
+          example: ["Technical Architecture", "Product Strategy"]
+        communication_style:
+          type: string
+          example: "Direct and collaborative, focuses on problem-solving"
+        key_opinions:
+          type: array
+          items:
+            type: string
+          example: ["Advocates for user-centric design", "Emphasizes data-driven decisions"]
+        pain_points:
+          type: array
+          items:
+            type: string
+          example: ["Manual data processing", "Lack of automation in workflows"]
+        influence_level:
+          type: string
+          enum: [high, medium, low]
+          example: "high"
+        channel_breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              channel_id:
+                type: string
+              channel_name:
+                type: string
+              message_count:
+                type: integer
+              reply_count:
+                type: integer
+              last_activity:
+                type: string
+                format: date-time
+              ai_summary:
+                type: string
+        ai_insights:
+          type: string
+          description: Comprehensive AI-generated insights about the user
+          example: "Active contributor with strong technical expertise..."
+        ai_persona_summary:
+          type: string
+          description: AI-generated persona summary
+          example: "Technical leader focused on product innovation..."
+        ai_tokens_used:
+          type: integer
+          description: Number of AI tokens used for analysis
+          example: 12500
+        last_updated:
+          type: integer
+          description: Unix timestamp of last update
+          example: 1704628800
+
+    SlackChannelSummary:
+      type: object
+      required:
+        - channel_id
+        - workspace_id
+        - channel_name
+        - is_private
+        - analysis_date
+        - analysis_period_days
+        - messages_analyzed
+        - last_updated
+      properties:
+        channel_id:
+          type: string
+          example: "C123456789"
+        workspace_id:
+          type: string
+          example: "T123456789"
+        channel_name:
+          type: string
+          example: "general"
+        is_private:
+          type: boolean
+          example: false
+        num_members:
+          type: integer
+          description: Number of members in the channel
+          example: 45
+        analysis_date:
+          type: string
+          format: date-time
+          example: "2025-01-07T12:00:00Z"
+        analysis_period_days:
+          type: integer
+          example: 30
+        messages_analyzed:
+          type: integer
+          description: Number of messages analyzed
+          example: 450
+        channel_purpose:
+          type: string
+          example: "General team communication and updates"
+        key_topics:
+          type: array
+          items:
+            type: string
+          example: ["Product Updates", "Customer Feedback", "Team Announcements"]
+        feature_requests:
+          type: array
+          items:
+            type: string
+          example: ["API rate limiting improvements", "Better search functionality"]
+        pain_points:
+          type: array
+          items:
+            type: string
+          example: ["Slow response times", "Complex onboarding process"]
+        sentiment:
+          type: string
+          enum: [positive, neutral, negative]
+          example: "positive"
+        key_contributors:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              user_name:
+                type: string
+              contribution_level:
+                type: string
+                enum: [high, medium, low]
+        product_opportunities:
+          type: array
+          items:
+            type: string
+          example: ["Integration marketplace", "Advanced analytics dashboard"]
+        strategic_recommendations:
+          type: array
+          items:
+            type: string
+          example: ["Focus on mobile experience", "Invest in API documentation"]
+        ai_summary:
+          type: string
+          description: Comprehensive AI-generated channel summary
+          example: "Active channel focused on product development..."
+        ai_tokens_used:
+          type: integer
+          description: Number of AI tokens used for analysis
+          example: 15000
+        last_updated:
+          type: integer
+          description: Unix timestamp of last update
+          example: 1704628800
+
+    SlackUserListResponse:
+      type: object
+      required:
+        - users
+        - count
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlackUserProfile'
+          maxItems: 100
+        count:
+          type: integer
+          description: Number of users returned
+          example: 25
+
+    SlackChannelListResponse:
+      type: object
+      required:
+        - channels
+        - count
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlackChannelSummary'
+          maxItems: 100
+        count:
+          type: integer
+          description: Number of channels returned
+          example: 12
+
   responses:
     BadRequest:
       description: Invalid request parameters
@@ -1924,3 +2488,5 @@ tags:
     description: Operations for managing system configuration and settings
   - name: Health
     description: Operations for monitoring system health and performance metrics
+  - name: Slack
+    description: Operations for Slack workspace analysis including user profiles and channel insights

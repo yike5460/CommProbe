@@ -137,6 +137,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return handle_update_config(event, headers)
         elif http_method == 'GET' and path == '/health':
             return handle_health_check(headers)
+        # Slack API endpoints
+        elif http_method == 'POST' and path == '/slack/analyze/user':
+            return handle_slack_analyze_user(event, headers)
+        elif http_method == 'GET' and path.startswith('/slack/users/') and path != '/slack/users':
+            return handle_slack_get_user_profile(event, headers)
+        elif http_method == 'GET' and path == '/slack/users':
+            return handle_slack_list_users(event, headers)
+        elif http_method == 'POST' and path == '/slack/analyze/channel':
+            return handle_slack_analyze_channel(event, headers)
+        elif http_method == 'GET' and path.startswith('/slack/channels/') and path != '/slack/channels':
+            return handle_slack_get_channel_summary(event, headers)
+        elif http_method == 'GET' and path == '/slack/channels':
+            return handle_slack_list_channels(event, headers)
         elif http_method == 'GET' and path == '/':
             return handle_api_documentation(headers)
         else:
@@ -1358,6 +1371,238 @@ def handle_get_execution_logs(event: Dict[str, Any], headers: Dict[str, str]) ->
     except Exception as e:
         print(f"Error getting execution logs: {str(e)}")
         return create_response(500, {'error': 'Failed to get execution logs', 'message': str(e)}, headers)
+
+
+def handle_slack_analyze_user(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle POST /slack/analyze/user - Trigger Slack user analysis"""
+    try:
+        body = json.loads(event.get('body', '{}'))
+
+        # Invoke Slack collector Lambda asynchronously
+        lambda_client = boto3.client('lambda')
+        slack_function_name = os.environ.get('SLACK_COLLECTOR_FUNCTION_NAME')
+
+        if not slack_function_name:
+            return create_response(500, {'error': 'Slack collector not configured'}, headers)
+
+        payload = {
+            'analysis_type': 'user',
+            'user_email': body.get('user_email'),
+            'user_id': body.get('user_id'),
+            'days': body.get('days', 30),
+            'workspace_id': body.get('workspace_id', 'default')
+        }
+
+        lambda_client.invoke(
+            FunctionName=slack_function_name,
+            InvocationType='Event',  # Async invocation
+            Payload=json.dumps(payload)
+        )
+
+        return create_response(202, {
+            'message': 'User analysis started',
+            'request_id': event.get('requestContext', {}).get('requestId'),
+            'user_id': body.get('user_id'),
+            'user_email': body.get('user_email'),
+            'estimated_completion': '2-5 minutes'
+        }, headers)
+
+    except Exception as e:
+        print(f"Error triggering Slack user analysis: {str(e)}")
+        return create_response(500, {'error': 'Failed to trigger user analysis', 'message': str(e)}, headers)
+
+
+def handle_slack_get_user_profile(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle GET /slack/users/{user_id} - Get user profile"""
+    try:
+        path = event.get('path', '')
+        user_id = path.split('/slack/users/')[-1]
+        query_params = event.get('queryStringParameters') or {}
+        workspace_id = query_params.get('workspace_id', 'default')
+
+        table_name = os.environ.get('SLACK_PROFILES_TABLE_NAME')
+        if not table_name:
+            return create_response(500, {'error': 'Slack profiles table not configured'}, headers)
+
+        table = dynamodb.Table(table_name)
+        response = table.get_item(
+            Key={
+                'PK': f'USER#{user_id}',
+                'SK': f'WORKSPACE#{workspace_id}'
+            }
+        )
+
+        if 'Item' not in response:
+            return create_response(404, {'error': 'User profile not found'}, headers)
+
+        # Convert item and parse JSON strings back to lists
+        item = convert_decimals(response['Item'])
+
+        # Parse JSON string fields back to arrays
+        for field in ['interests', 'expertise_areas', 'key_opinions', 'pain_points', 'channel_breakdown']:
+            if field in item and isinstance(item[field], str):
+                try:
+                    item[field] = json.loads(item[field])
+                except:
+                    pass
+
+        return create_response(200, item, headers)
+
+    except Exception as e:
+        print(f"Error getting Slack user profile: {str(e)}")
+        return create_response(500, {'error': 'Failed to get user profile', 'message': str(e)}, headers)
+
+
+def handle_slack_list_users(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle GET /slack/users - List user profiles"""
+    try:
+        query_params = event.get('queryStringParameters') or {}
+        workspace_id = query_params.get('workspace_id', 'default')
+        limit = int(query_params.get('limit', 50))
+
+        table_name = os.environ.get('SLACK_PROFILES_TABLE_NAME')
+        if not table_name:
+            return create_response(500, {'error': 'Slack profiles table not configured'}, headers)
+
+        table = dynamodb.Table(table_name)
+        response = table.query(
+            IndexName='WorkspaceIndex',
+            KeyConditionExpression='workspace_id = :wid',
+            FilterExpression='entity_type = :type',
+            ExpressionAttributeValues={
+                ':wid': workspace_id,
+                ':type': 'user_profile'
+            },
+            Limit=limit
+        )
+
+        users = convert_decimals(response.get('Items', []))
+
+        return create_response(200, {
+            'users': users,
+            'count': len(users),
+            'workspace_id': workspace_id
+        }, headers)
+
+    except Exception as e:
+        print(f"Error listing Slack users: {str(e)}")
+        return create_response(500, {'error': 'Failed to list users', 'message': str(e)}, headers)
+
+
+def handle_slack_analyze_channel(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle POST /slack/analyze/channel - Trigger Slack channel analysis"""
+    try:
+        body = json.loads(event.get('body', '{}'))
+
+        # Invoke Slack collector Lambda asynchronously
+        lambda_client = boto3.client('lambda')
+        slack_function_name = os.environ.get('SLACK_COLLECTOR_FUNCTION_NAME')
+
+        if not slack_function_name:
+            return create_response(500, {'error': 'Slack collector not configured'}, headers)
+
+        payload = {
+            'analysis_type': 'channel',
+            'channel_name': body.get('channel_name'),
+            'channel_id': body.get('channel_id'),
+            'days': body.get('days', 30),
+            'workspace_id': body.get('workspace_id', 'default')
+        }
+
+        lambda_client.invoke(
+            FunctionName=slack_function_name,
+            InvocationType='Event',  # Async invocation
+            Payload=json.dumps(payload)
+        )
+
+        return create_response(202, {
+            'message': 'Channel analysis started',
+            'request_id': event.get('requestContext', {}).get('requestId'),
+            'channel_id': body.get('channel_id'),
+            'channel_name': body.get('channel_name'),
+            'estimated_completion': '1-3 minutes'
+        }, headers)
+
+    except Exception as e:
+        print(f"Error triggering Slack channel analysis: {str(e)}")
+        return create_response(500, {'error': 'Failed to trigger channel analysis', 'message': str(e)}, headers)
+
+
+def handle_slack_get_channel_summary(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle GET /slack/channels/{channel_id} - Get channel summary"""
+    try:
+        path = event.get('path', '')
+        channel_id = path.split('/slack/channels/')[-1]
+        query_params = event.get('queryStringParameters') or {}
+        workspace_id = query_params.get('workspace_id', 'default')
+
+        table_name = os.environ.get('SLACK_PROFILES_TABLE_NAME')
+        if not table_name:
+            return create_response(500, {'error': 'Slack profiles table not configured'}, headers)
+
+        table = dynamodb.Table(table_name)
+        response = table.get_item(
+            Key={
+                'PK': f'CHANNEL#{channel_id}',
+                'SK': f'WORKSPACE#{workspace_id}'
+            }
+        )
+
+        if 'Item' not in response:
+            return create_response(404, {'error': 'Channel summary not found'}, headers)
+
+        # Convert item and parse JSON strings back to lists
+        item = convert_decimals(response['Item'])
+
+        # Parse JSON string fields back to arrays
+        for field in ['key_topics', 'feature_requests', 'pain_points', 'product_opportunities', 'strategic_recommendations', 'key_contributors']:
+            if field in item and isinstance(item[field], str):
+                try:
+                    item[field] = json.loads(item[field])
+                except:
+                    pass
+
+        return create_response(200, item, headers)
+
+    except Exception as e:
+        print(f"Error getting Slack channel summary: {str(e)}")
+        return create_response(500, {'error': 'Failed to get channel summary', 'message': str(e)}, headers)
+
+
+def handle_slack_list_channels(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle GET /slack/channels - List channel summaries"""
+    try:
+        query_params = event.get('queryStringParameters') or {}
+        workspace_id = query_params.get('workspace_id', 'default')
+        limit = int(query_params.get('limit', 50))
+
+        table_name = os.environ.get('SLACK_PROFILES_TABLE_NAME')
+        if not table_name:
+            return create_response(500, {'error': 'Slack profiles table not configured'}, headers)
+
+        table = dynamodb.Table(table_name)
+        response = table.query(
+            IndexName='WorkspaceIndex',
+            KeyConditionExpression='workspace_id = :wid',
+            FilterExpression='entity_type = :type',
+            ExpressionAttributeValues={
+                ':wid': workspace_id,
+                ':type': 'channel_summary'
+            },
+            Limit=limit
+        )
+
+        channels = convert_decimals(response.get('Items', []))
+
+        return create_response(200, {
+            'channels': channels,
+            'count': len(channels),
+            'workspace_id': workspace_id
+        }, headers)
+
+    except Exception as e:
+        print(f"Error listing Slack channels: {str(e)}")
+        return create_response(500, {'error': 'Failed to list channels', 'message': str(e)}, headers)
 
 
 def create_response(status_code: int, body: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:

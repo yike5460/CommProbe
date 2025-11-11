@@ -11,6 +11,9 @@
 // API Request/Response Types
 // ================================
 
+// Platform Types
+export type Platform = 'reddit' | 'twitter' | 'slack';
+
 // Crawl Trigger Types
 export interface CrawlTriggerRequest {
   subreddits?: string[];
@@ -269,6 +272,103 @@ export interface CompetitorData {
     analyzed_at: string;
     subreddit: string;
   }>;
+}
+
+// ================================
+// Slack Integration Types (NEW!)
+// ================================
+
+export type SlackAnalysisType = 'user' | 'channel' | 'workspace';
+
+export interface SlackUserProfile {
+  user_id: string;
+  workspace_id: string;
+  user_email: string;
+  user_name: string;
+  display_name?: string;
+  total_channels: number;
+  active_channels: number;
+  total_messages: number;
+  total_replies: number;
+  total_activity: number;
+  analysis_date: string;
+  analysis_period_days: number;
+  interests: string[];
+  expertise_areas: string[];
+  communication_style: string;
+  key_opinions: string[];
+  pain_points: string[];
+  influence_level: 'high' | 'medium' | 'low';
+  channel_breakdown: ChannelActivity[];
+  ai_insights: string;
+  ai_persona_summary: string;
+  ai_tokens_used: number;
+  last_updated: number;
+}
+
+export interface ChannelActivity {
+  channel_id: string;
+  channel_name: string;
+  message_count: number;
+  reply_count: number;
+  last_activity: string;
+  ai_summary: string;
+}
+
+export interface SlackChannelSummary {
+  channel_id: string;
+  workspace_id: string;
+  channel_name: string;
+  is_private: boolean;
+  num_members: number;
+  analysis_date: string;
+  analysis_period_days: number;
+  messages_analyzed: number;
+  channel_purpose: string;
+  key_topics: string[];
+  feature_requests: string[];
+  pain_points: string[];
+  sentiment: 'positive' | 'neutral' | 'negative';
+  key_contributors: KeyContributor[];
+  product_opportunities: string[];
+  strategic_recommendations: string[];
+  ai_summary: string;
+  ai_tokens_used: number;
+  last_updated: number;
+}
+
+export interface KeyContributor {
+  user_id: string;
+  user_name: string;
+  contribution_level: 'high' | 'medium' | 'low';
+}
+
+export interface SlackAnalysisRequest {
+  analysis_type: SlackAnalysisType;
+  user_email?: string;
+  user_id?: string;
+  channel_name?: string;
+  channel_id?: string;
+  days?: number;
+  workspace_id?: string;
+}
+
+export interface SlackAnalysisResponse {
+  message: string;
+  request_id: string;
+  estimated_completion?: string;
+}
+
+export interface SlackUserListResponse {
+  users: SlackUserProfile[];
+  count: number;
+  workspace_id: string;
+}
+
+export interface SlackChannelListResponse {
+  channels: SlackChannelSummary[];
+  count: number;
+  workspace_id: string;
 }
 
 // Configuration Types
