@@ -6,8 +6,10 @@ Analyzes Slack workspace data for user profiles and channel insights.
 import os
 import json
 import logging
+import time
+import boto3
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from slack_analyzer import SlackAnalyzer
 from bedrock_client import BedrockContentAnalyzer
@@ -25,6 +27,7 @@ logger.setLevel(logging.INFO)
 SLACK_BOT_TOKEN = os.environ.get('SLACK_BOT_TOKEN', '')
 BUCKET_NAME = os.environ.get('BUCKET_NAME', '')
 SLACK_PROFILES_TABLE = os.environ.get('SLACK_PROFILES_TABLE', '')
+SLACK_JOBS_TABLE = os.environ.get('SLACK_JOBS_TABLE', '')
 AWS_BEDROCK_REGION = os.environ.get('AWS_BEDROCK_REGION', 'us-west-2')
 MODEL_ID = os.environ.get('MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0')
 
@@ -57,9 +60,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     start_time = datetime.utcnow()
     logger.info(f"Slack Lambda invoked: {json.dumps(event)}")
 
+    # Extract job_id if provided
+    job_id = event.get('job_id')
+
+    # Initialize DynamoDB client for job updates
+    jobs_table = None
+    if job_id and SLACK_JOBS_TABLE:
+        dynamodb_resource = boto3.resource('dynamodb')
+        jobs_table = dynamodb_resource.Table(SLACK_JOBS_TABLE)
+
     # Check if Slack is disabled
     if SLACK_BOT_TOKEN == 'DISABLED' or not SLACK_BOT_TOKEN:
         logger.warning("Slack integration disabled - SLACK_BOT_TOKEN not configured")
+        if job_id and jobs_table:
+            update_job_status(jobs_table, job_id, 'failed', error='Slack not configured')
         return {
             'platform': 'slack',
             'status': 'disabled',
@@ -67,6 +81,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     try:
+        # Update job status to 'processing'
+        if job_id and jobs_table:
+            update_job_status(jobs_table, job_id, 'processing')
         # Validate and parse input
         lambda_input = LambdaInput(**event)
 
@@ -89,11 +106,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         duration = (datetime.utcnow() - start_time).total_seconds()
         result['metadata']['analysis_duration_seconds'] = int(duration)
 
+        # Update job status to 'completed'
+        if job_id and jobs_table:
+            update_job_status(
+                jobs_table,
+                job_id,
+                'completed',
+                result_location=result.get('s3_location'),
+                user_id=result['metadata'].get('user_id'),
+                channel_id=result['metadata'].get('channel_id')
+            )
+
         logger.info(f"Analysis completed successfully in {duration:.1f}s")
         return result
 
     except Exception as e:
         logger.error(f"Error in Slack Lambda: {str(e)}", exc_info=True)
+
+        # Update job status to 'failed'
+        if job_id and jobs_table:
+            update_job_status(jobs_table, job_id, 'failed', error=str(e))
+
         return {
             'platform': 'slack',
             'status': 'error',
@@ -129,9 +162,18 @@ def analyze_user(
     channels = slack_analyzer.get_user_channels(user_id)
     logger.info(f"User is in {len(channels)} channels")
 
-    # Get messages and replies
-    user_messages = slack_analyzer.get_user_messages(user_id, channels, days=lambda_input.days)
-    user_replies = slack_analyzer.get_user_replies(user_id, channels, days=lambda_input.days)
+    # Sort channels by activity and limit to prevent timeout
+    channels_sorted = sorted(channels, key=lambda ch: ch.get('num_members', 0), reverse=True)
+    max_channels = 20  # Increase from 10 to 20 for better coverage
+    limited_channels = channels_sorted[:max_channels]
+
+    if len(channels) > max_channels:
+        logger.info(f"Limiting analysis to top {max_channels} most active channels (out of {len(channels)} total)")
+        logger.info(f"Skipped channels: {[ch['name'] for ch in channels_sorted[max_channels:max_channels+5]]}...")
+
+    # Get messages and replies from LIMITED channels only
+    user_messages = slack_analyzer.get_user_messages(user_id, limited_channels, days=lambda_input.days)
+    user_replies = slack_analyzer.get_user_replies(user_id, limited_channels, days=lambda_input.days)
 
     # Calculate statistics
     total_messages = sum(len(msgs) for msgs in user_messages.values())
@@ -144,7 +186,7 @@ def analyze_user(
     channel_analyses = []
     total_ai_tokens = 0
 
-    for channel in channels[:10]:  # Limit to top 10 to prevent timeout
+    for channel in limited_channels[:10]:  # Use already-limited channels
         channel_name = channel['name']
         messages = user_messages.get(channel_name, [])
         replies = user_replies.get(channel_name, [])
@@ -240,9 +282,12 @@ def analyze_user(
             'user_id': user_id,
             'user_email': user_info.get('email', ''),
             'user_name': user_info.get('name', ''),
+            'total_channels_in_workspace': len(channels),
+            'channels_analyzed': len(limited_channels),
+            'channels_skipped': len(channels) - len(limited_channels),
             'messages_analyzed': total_messages,
             'replies_analyzed': total_replies,
-            'channels_analyzed': active_channels,
+            'active_channels': active_channels,
             'ai_tokens_used': total_ai_tokens
         }
     }
@@ -453,3 +498,50 @@ def extract_contributors(messages: list, top_n: int = 5) -> list:
         )
 
     return contributors
+
+
+def update_job_status(
+    jobs_table,
+    job_id: str,
+    status: str,
+    error: Optional[str] = None,
+    result_location: Optional[str] = None,
+    user_id: Optional[str] = None,
+    channel_id: Optional[str] = None
+) -> None:
+    """Update job status in DynamoDB."""
+    try:
+        update_expr = "SET #status = :status, updated_at = :updated_at"
+        expr_attr_names = {"#status": "status"}
+        expr_attr_values = {
+            ":status": status,
+            ":updated_at": int(time.time())
+        }
+
+        if error:
+            update_expr += ", error_message = :error"
+            expr_attr_values[":error"] = error
+
+        if result_location:
+            update_expr += ", result_location = :location"
+            expr_attr_values[":location"] = result_location
+
+        if user_id:
+            update_expr += ", user_id = :user_id"
+            expr_attr_values[":user_id"] = user_id
+
+        if channel_id:
+            update_expr += ", channel_id = :channel_id"
+            expr_attr_values[":channel_id"] = channel_id
+
+        jobs_table.update_item(
+            Key={'job_id': job_id},
+            UpdateExpression=update_expr,
+            ExpressionAttributeNames=expr_attr_names,
+            ExpressionAttributeValues=expr_attr_values
+        )
+
+        logger.info(f"Updated job {job_id} status to {status}")
+
+    except Exception as e:
+        logger.error(f"Failed to update job status: {str(e)}")

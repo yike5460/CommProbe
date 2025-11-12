@@ -155,6 +155,17 @@ export class SlackApiService {
   }
 
   // ================================
+  // Job Status Endpoints
+  // ================================
+
+  /**
+   * GET /slack/jobs/{job_id}/status - Get job status
+   */
+  async getJobStatus(jobId: string): Promise<SlackJobStatus> {
+    return this.request(`/jobs/${encodeURIComponent(jobId)}/status`);
+  }
+
+  // ================================
   // Utility Methods
   // ================================
 

@@ -138,7 +138,7 @@ export const useAnalyzeSlackUser = () => {
       }
     },
     meta: {
-      successMessage: 'User analysis started! Results will be available in 2-5 minutes.',
+      successMessage: 'User analysis started! Tracking progress...',
       errorMessage: 'Failed to start user analysis',
     },
   });
@@ -164,7 +164,7 @@ export const useAnalyzeSlackChannel = () => {
       }
     },
     meta: {
-      successMessage: 'Channel analysis started! Results will be available in 1-3 minutes.',
+      successMessage: 'Channel analysis started! Tracking progress...',
       errorMessage: 'Failed to start channel analysis',
     },
   });
@@ -298,4 +298,27 @@ export const useFilteredSlackChannels = (
     },
     ...queryResult,
   };
+};
+
+/**
+ * Poll job status until completion
+ * Automatically stops polling when job reaches terminal state (completed/failed)
+ */
+export const useSlackJobStatus = (jobId: string | null) => {
+  return useQuery({
+    queryKey: ['slack', 'job', jobId],
+    queryFn: () => slackApiService.getJobStatus(jobId!),
+    enabled: !!jobId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // Stop polling when job reaches terminal state
+      if (!data || data.status === 'completed' || data.status === 'failed') {
+        return false;
+      }
+      // Poll every 5 seconds while pending/processing
+      return 5000;
+    },
+    staleTime: 0, // Always fetch fresh status
+    retry: 3,
+  });
 };

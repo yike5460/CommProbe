@@ -173,6 +173,31 @@ export class LegalCrawlerStack extends Stack {
       },
     });
 
+    // Slack Jobs Table - Tracks async analysis job status
+    const slackJobsTable = new dynamodb.Table(this, 'SlackJobsTable', {
+      tableName: 'supio-slack-jobs',
+      partitionKey: {
+        name: 'job_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl', // Auto-cleanup after 7 days
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    // Add GSI for user lookups (find jobs by user_id)
+    slackJobsTable.addGlobalSecondaryIndex({
+      indexName: 'UserIndex',
+      partitionKey: {
+        name: 'user_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'created_at',
+        type: dynamodb.AttributeType.NUMBER,
+      },
+    });
+
     // ===========================================
     // Lambda Layer for Python Dependencies
     // ===========================================
@@ -246,6 +271,7 @@ export class LegalCrawlerStack extends Stack {
         BUCKET_NAME: rawDataBucket.bucketName,
         SLACK_BOT_TOKEN: slackBotToken || 'DISABLED',
         SLACK_PROFILES_TABLE: slackProfilesTable.tableName,
+        SLACK_JOBS_TABLE: slackJobsTable.tableName,
         AWS_BEDROCK_REGION: this.region,
         MODEL_ID: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
       },
@@ -258,6 +284,7 @@ export class LegalCrawlerStack extends Stack {
 
     // Grant DynamoDB permissions to Slack collector
     slackProfilesTable.grantReadWriteData(slackCollectorFunction);
+    slackJobsTable.grantWriteData(slackCollectorFunction);
 
     // Grant Bedrock permissions to Slack collector (inline AI analysis)
     slackCollectorFunction.addToRolePolicy(
@@ -460,6 +487,7 @@ def handler(event, context):
         INSIGHTS_TABLE_NAME: insightsTable.tableName,
         CONFIG_TABLE_NAME: configTable.tableName,
         SLACK_PROFILES_TABLE_NAME: slackProfilesTable.tableName,
+        SLACK_JOBS_TABLE_NAME: slackJobsTable.tableName,
         SLACK_COLLECTOR_FUNCTION_NAME: slackCollectorFunction.functionName,
       },
       layers: [dependenciesLayer],
@@ -473,8 +501,9 @@ def handler(event, context):
     // Grant permissions to invoke Slack collector Lambda
     slackCollectorFunction.grantInvoke(apiFunction);
 
-    // Grant DynamoDB permissions for Slack profiles
+    // Grant DynamoDB permissions for Slack profiles and jobs
     slackProfilesTable.grantReadWriteData(apiFunction);
+    slackJobsTable.grantReadWriteData(apiFunction);
 
     // Grant explicit Step Functions execution management permissions
     // Note: Execution ARN pattern is different from state machine ARN pattern
@@ -591,6 +620,12 @@ def handler(event, context):
 
     const slackChannelByIdResource = slackChannelsResource.addResource('{channel_id}');
     slackChannelByIdResource.addMethod('GET', lambdaIntegration); // GET /slack/channels/{channel_id}
+
+    // Job status endpoint
+    const slackJobsResource = slackResource.addResource('jobs');
+    const slackJobByIdResource = slackJobsResource.addResource('{job_id}');
+    const slackJobStatusResource = slackJobByIdResource.addResource('status');
+    slackJobStatusResource.addMethod('GET', lambdaIntegration); // GET /slack/jobs/{job_id}/status
 
     // Output the API URL
     new CfnOutput(this, 'ApiUrl', {

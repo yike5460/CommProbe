@@ -355,8 +355,28 @@ export interface SlackAnalysisRequest {
 
 export interface SlackAnalysisResponse {
   message: string;
+  job_id: string;
   request_id: string;
+  user_id?: string | null;
+  user_email?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
   estimated_completion?: string;
+}
+
+export interface SlackJobStatus {
+  job_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  analysis_type: 'user' | 'channel';
+  user_id?: string | null;
+  user_email?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
+  workspace_id: string;
+  created_at: number;
+  updated_at: number;
+  error_message?: string | null;
+  result_location?: string | null;
 }
 
 export interface SlackUserListResponse {

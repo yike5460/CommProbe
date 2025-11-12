@@ -6,8 +6,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout';
-import { SlackChannelCard, AnalysisTrigger } from '@/components/slack';
+import { SlackChannelCard, AnalysisTrigger, AnalysisJobStatus } from '@/components/slack';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -27,6 +28,9 @@ export default function SlackChannelsPage() {
   const [sentiment, setSentiment] = useState<'all' | 'positive' | 'neutral' | 'negative'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useFilteredSlackChannels(workspaceId, {
     sentiment,
@@ -35,6 +39,25 @@ export default function SlackChannelsPage() {
 
   return (
     <AppLayout>
+      {/* Active Job Status Indicator */}
+      {activeJobId && (
+        <div className="mb-6">
+          <AnalysisJobStatus
+            jobId={activeJobId}
+            onComplete={() => {
+              // Refresh channels list
+              queryClient.invalidateQueries({ queryKey: ['slack', 'channels'] });
+              // Clear active job
+              setActiveJobId(null);
+            }}
+            onError={(error) => {
+              // Clear active job on error
+              setActiveJobId(null);
+            }}
+          />
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -61,7 +84,11 @@ export default function SlackChannelsPage() {
             <AnalysisTrigger
               type="channel"
               compact
-              onSuccess={() => {
+              onSuccess={(response) => {
+                // Capture job_id from response
+                if (response.job_id) {
+                  setActiveJobId(response.job_id);
+                }
                 setShowAnalysisDialog(false);
               }}
             />

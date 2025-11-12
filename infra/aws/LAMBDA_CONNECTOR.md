@@ -293,8 +293,12 @@ AWS_BEDROCK_REGION = os.environ.get('AWS_BEDROCK_REGION', 'us-west-2')
   "metadata": {
     "user_id": "U123456789",
     "user_email": "user@example.com",
+    "total_channels_in_workspace": 152,
+    "channels_analyzed": 20,
+    "channels_skipped": 132,
     "messages_analyzed": 342,
-    "channels_analyzed": 8,
+    "replies_analyzed": 156,
+    "active_channels": 15,
     "ai_tokens_used": 12500,
     "analysis_duration_seconds": 45
   }
@@ -333,6 +337,37 @@ npx cdk deploy \
 - **Memory**: 2048 MB (higher memory for AI analysis via Bedrock)
 - **Runtime**: Python 3.12
 
+### Timeout Prevention Strategy
+
+**Issue:** Users in many channels (>50) could cause Lambda timeout before data is saved to DynamoDB.
+
+**Solution Implemented:**
+1. **Channel Limiting**: Analyze only the top 20 most active channels (sorted by member count)
+2. **Early Sorting**: Channels are sorted and limited BEFORE message fetching (not after)
+3. **Metadata Tracking**: Response includes total channels, analyzed, and skipped counts
+
+**Code Implementation** (`index.py` lines 132-143):
+```python
+# Sort channels by activity and limit to prevent timeout
+channels_sorted = sorted(channels, key=lambda ch: ch.get('num_members', 0), reverse=True)
+max_channels = 20  # Limit to 20 for better coverage
+limited_channels = channels_sorted[:max_channels]
+
+if len(channels) > max_channels:
+    logger.info(f"Limiting analysis to top {max_channels} channels (out of {len(channels)} total)")
+
+# Get messages and replies from LIMITED channels only
+user_messages = slack_analyzer.get_user_messages(user_id, limited_channels, days=...)
+user_replies = slack_analyzer.get_user_replies(user_id, limited_channels, days=...)
+```
+
+**Impact:**
+- ✅ Prevents timeout for users with 150+ channels
+- ✅ Guarantees data is saved to DynamoDB
+- ✅ Covers most active channels (where users are most engaged)
+- ✅ Analysis completes in <5 minutes even for heavy users
+- ℹ️ Skipped channels are logged and tracked in metadata
+
 ## DynamoDB Schema
 
 ### supio-slack-profiles Table
@@ -365,19 +400,90 @@ npx cdk deploy \
 
 ### Trigger Analysis (via API Lambda)
 
-The API Lambda invokes the Slack Collector Lambda asynchronously:
+The API Lambda invokes the Slack Collector Lambda asynchronously with job tracking:
 
 ```python
+# Generate job ID
+job_id = str(uuid.uuid4())
+
+# Create job record in supio-slack-jobs table
+jobs_table.put_item(Item={
+    'job_id': job_id,
+    'status': 'pending',
+    'analysis_type': 'user',
+    'user_email': 'user@example.com',
+    'workspace_id': 'default',
+    'created_at': int(time.time()),
+    'updated_at': int(time.time()),
+    'ttl': int(time.time()) + (7 * 24 * 60 * 60)  # 7 days
+})
+
+# Invoke collector Lambda
 lambda_client.invoke(
     FunctionName=os.environ['SLACK_COLLECTOR_FUNCTION_NAME'],
     InvocationType='Event',  # Async invocation
     Payload=json.dumps({
+        'job_id': job_id,  # Pass job_id to collector
         'analysis_type': 'user',
         'user_email': 'user@example.com',
         'days': 30
     })
 )
+
+# Return job_id to caller
+return {'job_id': job_id, 'message': 'User analysis started'}
 ```
+
+### Job Status Tracking
+
+The system tracks job progress through the `supio-slack-jobs` DynamoDB table:
+
+**Job Lifecycle:**
+1. **API Lambda** creates job with status `pending`
+2. **Collector Lambda** updates to `processing` when analysis starts
+3. **Collector Lambda** updates to `completed` (with result_location) or `failed` (with error_message)
+
+**Job Status Endpoint:**
+```python
+# GET /slack/jobs/{job_id}/status
+jobs_table = dynamodb.Table(os.environ['SLACK_JOBS_TABLE_NAME'])
+response = jobs_table.get_item(Key={'job_id': job_id})
+```
+
+**Status Updates in Collector Lambda:**
+```python
+# At start of analysis
+update_job_status(jobs_table, job_id, 'processing')
+
+# On success
+update_job_status(
+    jobs_table,
+    job_id,
+    'completed',
+    result_location=result['s3_location'],
+    user_id=result['metadata']['user_id']
+)
+
+# On error
+update_job_status(jobs_table, job_id, 'failed', error=str(e))
+```
+
+**Job Table Schema:**
+- `job_id` (PK): UUID
+- `status`: pending | processing | completed | failed
+- `analysis_type`: user | channel
+- `user_id`, `user_email`, `channel_id` (optional, indexed via UserIndex GSI)
+- `workspace_id`: Workspace identifier
+- `created_at`, `updated_at`: Unix timestamps
+- `error_message`: Error details (if failed)
+- `result_location`: S3 path (if completed)
+- `ttl`: Auto-cleanup after 7 days
+
+**Benefits:**
+- Real-time progress visibility
+- Better error handling
+- Prevents duplicate analysis triggers
+- Enables frontend polling and automatic refresh
 
 ### Retrieve Results (via API Lambda)
 

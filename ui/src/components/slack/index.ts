@@ -6,3 +6,4 @@
 export { SlackUserCard } from './SlackUserCard';
 export { SlackChannelCard } from './SlackChannelCard';
 export { AnalysisTrigger } from './AnalysisTrigger';
+export { AnalysisJobStatus } from './AnalysisJobStatus';

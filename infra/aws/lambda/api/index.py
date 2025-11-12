@@ -6,6 +6,8 @@ Provides REST endpoints for triggering and monitoring Reddit crawl jobs
 import boto3
 import json
 import os
+import uuid
+import time
 from datetime import datetime, timezone
 from typing import Dict, Any
 from decimal import Decimal
@@ -150,6 +152,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return handle_slack_get_channel_summary(event, headers)
         elif http_method == 'GET' and path == '/slack/channels':
             return handle_slack_list_channels(event, headers)
+        elif http_method == 'GET' and path.startswith('/slack/jobs/') and path.endswith('/status'):
+            return handle_slack_get_job_status(event, headers)
         elif http_method == 'GET' and path == '/':
             return handle_api_documentation(headers)
         else:
@@ -1378,6 +1382,37 @@ def handle_slack_analyze_user(event: Dict[str, Any], headers: Dict[str, str]) ->
     try:
         body = json.loads(event.get('body', '{}'))
 
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
+
+        # Create job record in DynamoDB
+        jobs_table_name = os.environ.get('SLACK_JOBS_TABLE_NAME')
+        if jobs_table_name:
+            jobs_table = dynamodb.Table(jobs_table_name)
+            current_time = int(time.time())
+            ttl = current_time + (7 * 24 * 60 * 60)  # 7 days
+
+            # Build job item - only include user_id if provided (DynamoDB GSI doesn't allow empty strings)
+            job_item = {
+                'job_id': job_id,
+                'status': 'pending',
+                'analysis_type': 'user',
+                'workspace_id': body.get('workspace_id', 'default'),
+                'created_at': current_time,
+                'updated_at': current_time,
+                'ttl': ttl
+            }
+
+            # Only add user_id if provided (required for UserIndex GSI)
+            if body.get('user_id'):
+                job_item['user_id'] = body.get('user_id')
+
+            # Only add user_email if provided
+            if body.get('user_email'):
+                job_item['user_email'] = body.get('user_email')
+
+            jobs_table.put_item(Item=job_item)
+
         # Invoke Slack collector Lambda asynchronously
         lambda_client = boto3.client('lambda')
         slack_function_name = os.environ.get('SLACK_COLLECTOR_FUNCTION_NAME')
@@ -1386,6 +1421,7 @@ def handle_slack_analyze_user(event: Dict[str, Any], headers: Dict[str, str]) ->
             return create_response(500, {'error': 'Slack collector not configured'}, headers)
 
         payload = {
+            'job_id': job_id,  # Pass job_id to collector
             'analysis_type': 'user',
             'user_email': body.get('user_email'),
             'user_id': body.get('user_id'),
@@ -1401,6 +1437,7 @@ def handle_slack_analyze_user(event: Dict[str, Any], headers: Dict[str, str]) ->
 
         return create_response(202, {
             'message': 'User analysis started',
+            'job_id': job_id,  # Return job_id
             'request_id': event.get('requestContext', {}).get('requestId'),
             'user_id': body.get('user_id'),
             'user_email': body.get('user_email'),
@@ -1621,6 +1658,53 @@ def handle_slack_list_channels(event: Dict[str, Any], headers: Dict[str, str]) -
     except Exception as e:
         print(f"Error listing Slack channels: {str(e)}")
         return create_response(500, {'error': 'Failed to list channels', 'message': str(e)}, headers)
+
+
+def handle_slack_get_job_status(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle GET /slack/jobs/{job_id}/status - Get job status"""
+    try:
+        path = event.get('path', '')
+        # Extract job_id from path /slack/jobs/{job_id}/status
+        path_parts = path.split('/')
+        job_id = None
+        for i, part in enumerate(path_parts):
+            if part == 'jobs' and i + 1 < len(path_parts):
+                job_id = path_parts[i + 1]
+                break
+
+        if not job_id:
+            return create_response(400, {'error': 'job_id is required'}, headers)
+
+        # Query job from DynamoDB
+        jobs_table_name = os.environ.get('SLACK_JOBS_TABLE_NAME')
+        if not jobs_table_name:
+            return create_response(500, {'error': 'Slack jobs table not configured'}, headers)
+
+        jobs_table = dynamodb.Table(jobs_table_name)
+        response = jobs_table.get_item(Key={'job_id': job_id})
+
+        if 'Item' not in response:
+            return create_response(404, {'error': 'Job not found'}, headers)
+
+        job = convert_decimals(response['Item'])
+
+        return create_response(200, {
+            'job_id': job['job_id'],
+            'status': job['status'],
+            'analysis_type': job['analysis_type'],
+            'user_id': job.get('user_id'),
+            'user_email': job.get('user_email'),
+            'channel_id': job.get('channel_id'),
+            'workspace_id': job.get('workspace_id'),
+            'created_at': job['created_at'],
+            'updated_at': job['updated_at'],
+            'error_message': job.get('error_message'),
+            'result_location': job.get('result_location')
+        }, headers)
+
+    except Exception as e:
+        print(f"Error getting job status: {str(e)}")
+        return create_response(500, {'error': 'Failed to get job status', 'message': str(e)}, headers)
 
 
 def create_response(status_code: int, body: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:

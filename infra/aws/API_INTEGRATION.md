@@ -63,12 +63,13 @@ Get API information and available endpoints.
     "GET /config": "Get system configuration",
     "PUT /config": "Update system configuration",
     "GET /health": "System health check",
-    "POST /slack/analyze/user": "Trigger Slack user analysis",
+    "POST /slack/analyze/user": "Trigger Slack user analysis (returns job_id)",
     "GET /slack/users/{user_id}": "Get Slack user profile",
     "GET /slack/users": "List Slack user profiles",
-    "POST /slack/analyze/channel": "Trigger Slack channel analysis",
+    "POST /slack/analyze/channel": "Trigger Slack channel analysis (returns job_id)",
     "GET /slack/channels/{channel_id}": "Get Slack channel summary",
-    "GET /slack/channels": "List Slack channel summaries"
+    "GET /slack/channels": "List Slack channel summaries",
+    "GET /slack/jobs/{job_id}/status": "Get job status (track analysis progress)"
   },
   "trigger_parameters": {
     "platforms": "array of platforms: reddit, twitter (optional, default: both)",
@@ -796,11 +797,19 @@ Analyze a Slack user's interests, opinions, expertise areas, and engagement patt
 ```json
 {
   "message": "User analysis started",
+  "job_id": "51203e3a-8a2e-483d-a7b2-d0f198c6d4cf",
   "request_id": "abc-123",
   "user_id": "U123456789",
+  "user_email": "john@example.com",
   "estimated_completion": "2-5 minutes"
 }
 ```
+
+**Response Fields:**
+- `job_id`: UUID for tracking analysis progress (use with `/slack/jobs/{job_id}/status`)
+- `message`: Confirmation message
+- `request_id`: API Gateway request ID
+- `estimated_completion`: Expected time to complete
 
 **Use Case:** Understand individual team member's focus areas, expertise, communication patterns, and pain points for better team alignment and resource allocation.
 
@@ -929,11 +938,19 @@ Analyze a Slack channel for key topics, feature requests, pain points, sentiment
 ```json
 {
   "message": "Channel analysis started",
+  "job_id": "a6407166-97b7-4913-9b87-6ff33a7b63f3",
   "request_id": "def-456",
   "channel_id": "C123456789",
+  "channel_name": "general",
   "estimated_completion": "1-3 minutes"
 }
 ```
+
+**Response Fields:**
+- `job_id`: UUID for tracking analysis progress (use with `/slack/jobs/{job_id}/status`)
+- `message`: Confirmation message
+- `request_id`: API Gateway request ID
+- `estimated_completion`: Expected time to complete
 
 **Use Case:** Understand channel-specific discussions, identify feature requests, gauge team sentiment, and discover product opportunities from internal conversations.
 
@@ -1038,9 +1055,55 @@ List all analyzed Slack channel summaries with optional filtering.
 }
 ```
 
+### 21. GET /slack/jobs/{job_id}/status - Get Job Status
+
+Get the current status of an asynchronous Slack analysis job.
+
+**Path Parameters:**
+- `job_id`: UUID of the analysis job (returned from analyze endpoints)
+
+**Response:** `200 OK`
+```json
+{
+  "job_id": "51203e3a-8a2e-483d-a7b2-d0f198c6d4cf",
+  "status": "processing",
+  "analysis_type": "user",
+  "user_id": "U123456789",
+  "user_email": "john@example.com",
+  "channel_id": null,
+  "workspace_id": "T123456789",
+  "created_at": 1762928958,
+  "updated_at": 1762928961,
+  "error_message": null,
+  "result_location": "s3://bucket/slack/2025-01-12/USER_U123456789.json"
+}
+```
+
+**Job Status Values:**
+- `pending`: Job created, waiting to start
+- `processing`: Analysis in progress (Collector Lambda running)
+- `completed`: Analysis finished successfully, data available
+- `failed`: Analysis failed (see error_message for details)
+
+**Error Response (404 - Job Not Found):**
+```json
+{
+  "error": "Job not found"
+}
+```
+
+**Use Case:** Poll this endpoint to track analysis progress. Recommended polling interval: 5 seconds. Frontend should stop polling when status reaches `completed` or `failed`.
+
 ### Slack Analysis Workflow
 
-**Typical Usage Pattern:**
+**Typical Usage Pattern (With Job Tracking):**
+1. Trigger analysis: `POST /slack/analyze/user` or `POST /slack/analyze/channel`
+2. Receive `job_id` in response
+3. Poll status: `GET /slack/jobs/{job_id}/status` every 5 seconds
+4. When status = `completed`, retrieve results: `GET /slack/users/{user_id}` or `GET /slack/channels/{channel_id}`
+5. Browse all profiles: `GET /slack/users` or `GET /slack/channels`
+
+**Legacy Usage (Without Job Tracking):**
 1. Trigger analysis: `POST /slack/analyze/user` or `POST /slack/analyze/channel`
 2. Wait 1-5 minutes for AI analysis to complete
 3. Retrieve results: `GET /slack/users/{user_id}` or `GET /slack/channels/{channel_id}`
@@ -1050,6 +1113,12 @@ List all analyzed Slack channel summaries with optional filtering.
 - Slack profiles and channel summaries are cached in DynamoDB with 180-day TTL
 - Re-trigger analysis to get fresh insights after significant time has passed
 - Useful for tracking changes in user interests or channel sentiment over time
+
+**Job Tracking Benefits:**
+- Real-time progress visibility for users
+- Better error handling and reporting
+- Prevents users from repeatedly triggering analysis
+- Enables automatic data refresh on completion
 
 ## Multi-Platform Support
 
