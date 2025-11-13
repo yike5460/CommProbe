@@ -209,6 +209,30 @@ export class SlackApiService {
   }
 
   // ================================
+  // Delete Endpoints
+  // ================================
+
+  /**
+   * DELETE /slack/users/{user_id} - Delete user profile
+   */
+  async deleteUserProfile(userId: string, workspaceId: string = 'default'): Promise<{ message: string }> {
+    const params = new URLSearchParams({ workspace_id: workspaceId });
+    return this.request(`/users/${encodeURIComponent(userId)}?${params}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * DELETE /slack/channels/{channel_id} - Delete channel summary
+   */
+  async deleteChannelSummary(channelId: string, workspaceId: string = 'default'): Promise<{ message: string }> {
+    const params = new URLSearchParams({ workspace_id: workspaceId });
+    return this.request(`/channels/${encodeURIComponent(channelId)}?${params}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ================================
   // Utility Methods
   // ================================
 

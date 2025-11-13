@@ -176,9 +176,11 @@ Provide a friendly, personal activity summary:
 5. **Key Contributions**: What valuable insights or help did they provide?
 6. **Current Focus**: What are they currently working on or thinking about?
 
-Write in a friendly, supportive tone that helps team members understand each other better. Format your response in clear sections with headers."""
+Write in a friendly, supportive tone that helps team members understand each other better. Format your response in clear sections with headers.
 
-        system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities, interests, and contributions. Focus on personal growth, team dynamics, and mutual understanding rather than product management. Write in a warm, conversational tone."
+IMPORTANT: Do NOT use emojis in your response. Use plain text markdown formatting only."""
+
+        system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities, interests, and contributions. Focus on personal growth, team dynamics, and mutual understanding rather than product management. Write in a warm, conversational tone. Do not use emojis or special characters."
 
         result = self._invoke_claude(prompt, system_prompt, max_tokens=2048, temperature=0.3)
 
@@ -246,9 +248,11 @@ Provide a conversational daily digest:
 6. **Team Mood**: What's the overall team sentiment and energy level?
 7. **Ongoing Discussions**: Any topics that will continue or action items mentioned?
 
-Write as a friendly daily digest that helps team members catch up on what they missed. Format your response with clear section headers and conversational language."""
+Write as a friendly daily digest that helps team members catch up on what they missed. Format your response with clear section headers and conversational language.
 
-        system_prompt = "You are a friendly team collaboration assistant creating daily channel summaries. Focus on helping team members stay connected, catch up on discussions, and understand team dynamics. Write in a warm, conversational tone that makes people feel included and informed."
+IMPORTANT: Do NOT use emojis in your response. Use plain text markdown formatting only (headers ##, bold **, bullets -, links []()), but no emoji characters."""
+
+        system_prompt = "You are a friendly team collaboration assistant creating daily channel summaries. Focus on helping team members stay connected, catch up on discussions, and understand team dynamics. Write in a warm, conversational tone that makes people feel included and informed. Use plain text only - do not include emojis or special characters in your response."
 
         result = self._invoke_claude(prompt, system_prompt, max_tokens=3072, temperature=0.4)
 
@@ -311,9 +315,11 @@ Create a warm, personal activity summary:
 6. **Team Connections**: Who do they interact with most frequently?
 7. **Personal Summary**: Create a friendly 2-3 sentence description that captures their recent vibe, focus, and energy
 
-Write as if you're a friendly colleague helping others understand what {user_name} is up to. Be specific, reference concrete examples, and maintain a supportive, appreciative tone."""
+Write as if you're a friendly colleague helping others understand what {user_name} is up to. Be specific, reference concrete examples, and maintain a supportive, appreciative tone.
 
-        system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities and interests. Focus on building connections, celebrating contributions, and fostering team understanding. Write in a warm, personal tone that makes people feel valued and connected."
+IMPORTANT: Do NOT use emojis in your response. Use plain text markdown formatting only."""
+
+        system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities and interests. Focus on building connections, celebrating contributions, and fostering team understanding. Write in a warm, personal tone that makes people feel valued and connected. Do not use emojis or special characters."
 
         result = self._invoke_claude(prompt, system_prompt, max_tokens=4096, temperature=0.3)
 

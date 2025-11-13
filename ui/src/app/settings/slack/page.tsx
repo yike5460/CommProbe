@@ -1,6 +1,7 @@
 /**
  * Slack Settings Page
  * Configure Slack workspace and bot token
+ * Theme: Consistent with main app (minimal, subtle colors)
  */
 
 'use client';
@@ -34,7 +35,7 @@ export default function SlackSettingsPage() {
   const [defaultDays, setDefaultDays] = useState(30);
 
   // Query hooks
-  const { data: config, isLoading: configLoading, error: configError } = useSlackConfig();
+  const { data: config, isLoading: configLoading } = useSlackConfig();
   const updateConfig = useUpdateSlackConfig();
   const testConnection = useTestSlackConnection();
 
@@ -94,31 +95,31 @@ export default function SlackSettingsPage() {
 
       {/* Success/Error Alerts */}
       {updateConfig.isSuccess && (
-        <Alert className="mb-6 bg-green-50 border-green-200">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">
-            Configuration updated successfully!
+        <Alert className="mb-6">
+          <CheckCircle className="h-4 w-4" />
+          <AlertDescription>
+            Configuration updated successfully
           </AlertDescription>
         </Alert>
       )}
 
       {updateConfig.isError && (
-        <Alert className="mb-6 bg-red-50 border-red-200">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-800">
+        <Alert className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
             Failed to update configuration. Please try again.
           </AlertDescription>
         </Alert>
       )}
 
       {testConnection.isSuccess && testConnection.data && (
-        <Alert className={`mb-6 ${testConnection.data.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+        <Alert className="mb-6">
           {testConnection.data.success ? (
-            <CheckCircle className="h-4 w-4 text-green-600" />
+            <CheckCircle className="h-4 w-4" />
           ) : (
-            <XCircle className="h-4 w-4 text-red-600" />
+            <XCircle className="h-4 w-4" />
           )}
-          <AlertDescription className={testConnection.data.success ? 'text-green-800' : 'text-red-800'}>
+          <AlertDescription>
             {testConnection.data.message}
           </AlertDescription>
         </Alert>
@@ -135,12 +136,12 @@ export default function SlackSettingsPage() {
                 Checking...
               </Badge>
             ) : connectionStatus === 'connected' ? (
-              <Badge variant="default" className="bg-green-500">
+              <Badge variant="default">
                 <CheckCircle className="h-3 w-3 mr-1" />
                 Connected
               </Badge>
             ) : (
-              <Badge variant="destructive">
+              <Badge variant="outline">
                 <XCircle className="h-3 w-3 mr-1" />
                 Not Connected
               </Badge>
@@ -148,22 +149,23 @@ export default function SlackSettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-purple-600 flex items-center justify-center">
-                <Settings className="h-6 w-6 text-white" />
+              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                <Settings className="h-5 w-5 text-foreground" />
               </div>
               <div>
-                <p className="font-medium">
-                  Workspace: {config?.workspace_name || config?.workspace_id || 'Not configured'}
+                <p className="font-medium text-sm">
+                  {config?.workspace_name || config?.workspace_id || 'Not configured'}
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  Token: {config?.bot_token_masked || 'Not configured'}
+                <p className="text-xs text-muted-foreground font-mono">
+                  {config?.bot_token_masked || 'No token'}
                 </p>
               </div>
             </div>
             <Button
               variant="outline"
+              size="sm"
               onClick={handleTestConnection}
               disabled={!config?.bot_token_configured || testConnection.isPending}
             >
@@ -184,7 +186,7 @@ export default function SlackSettingsPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
+            <Key className="h-4 w-4 text-muted-foreground" />
             Bot Token Configuration
           </CardTitle>
           <CardDescription>
@@ -194,15 +196,15 @@ export default function SlackSettingsPage() {
         <CardContent className="space-y-4">
           {!isEditingToken ? (
             <>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div>
                   <p className="text-sm font-medium">Bot Token</p>
                   <p className="text-sm text-muted-foreground font-mono">
                     {config?.bot_token_masked || 'Not configured'}
                   </p>
                 </div>
-                <Button variant="outline" onClick={() => setIsEditingToken(true)}>
-                  {config?.bot_token_configured ? 'Update Token' : 'Configure Token'}
+                <Button variant="outline" size="sm" onClick={() => setIsEditingToken(true)}>
+                  {config?.bot_token_configured ? 'Update' : 'Configure'}
                 </Button>
               </div>
 
@@ -232,6 +234,7 @@ export default function SlackSettingsPage() {
 
               <div className="flex gap-2">
                 <Button
+                  size="sm"
                   onClick={handleSaveToken}
                   disabled={!botToken || updateConfig.isPending}
                 >
@@ -245,6 +248,7 @@ export default function SlackSettingsPage() {
                   )}
                 </Button>
                 <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => {
                     setIsEditingToken(false);
@@ -259,8 +263,7 @@ export default function SlackSettingsPage() {
               <Alert>
                 <Shield className="h-4 w-4" />
                 <AlertDescription className="text-sm">
-                  <strong>Security Note:</strong> Your bot token will be encrypted and stored securely in DynamoDB.
-                  It will be used by the backend Lambda functions for API access.
+                  Your bot token will be encrypted and stored securely in DynamoDB.
                 </AlertDescription>
               </Alert>
             </>
@@ -268,17 +271,17 @@ export default function SlackSettingsPage() {
 
           {/* How to Get Token */}
           <details className="mt-4">
-            <summary className="cursor-pointer text-sm font-medium text-purple-700 hover:text-purple-800">
+            <summary className="cursor-pointer text-sm font-medium hover:underline">
               How to get your Slack bot token
             </summary>
-            <div className="mt-2 space-y-2 text-sm text-muted-foreground pl-4">
+            <div className="mt-2 space-y-1 text-sm text-muted-foreground pl-4">
               <p>
                 1. Go to{' '}
                 <a
                   href="https://api.slack.com/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-purple-700 hover:underline inline-flex items-center gap-1"
+                  className="underline hover:text-foreground inline-flex items-center gap-1"
                 >
                   api.slack.com/apps
                   <ExternalLink className="h-3 w-3" />
@@ -287,7 +290,6 @@ export default function SlackSettingsPage() {
               <p>2. Select your app or create a new one</p>
               <p>3. Navigate to "OAuth & Permissions"</p>
               <p>4. Copy the "Bot User OAuth Token" (starts with xoxb-)</p>
-              <p>5. Paste it in the field above</p>
             </div>
           </details>
         </CardContent>
@@ -311,7 +313,7 @@ export default function SlackSettingsPage() {
               placeholder="T123456789"
             />
             <p className="text-xs text-muted-foreground">
-              Your Slack workspace identifier (found in workspace settings)
+              Your Slack workspace identifier
             </p>
           </div>
 
@@ -321,10 +323,10 @@ export default function SlackSettingsPage() {
               id="workspace_name"
               value={workspaceName}
               onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="My Company Workspace"
+              placeholder="My Company"
             />
             <p className="text-xs text-muted-foreground">
-              Human-readable workspace name for display
+              Display name for your workspace
             </p>
           </div>
 
@@ -339,7 +341,7 @@ export default function SlackSettingsPage() {
               onChange={(e) => setDefaultDays(Number(e.target.value))}
             />
             <p className="text-xs text-muted-foreground">
-              Default number of days to analyze (7-90 days)
+              Number of days to analyze (7-90)
             </p>
           </div>
 
@@ -359,81 +361,50 @@ export default function SlackSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Bot Permissions (Collapsed by default) */}
+      {/* Bot Permissions */}
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
+            <Shield className="h-4 w-4 text-muted-foreground" />
             Required Bot Permissions
           </CardTitle>
           <CardDescription>
-            OAuth scopes needed for the CommProbe Slack bot
+            OAuth scopes needed for the Slack bot
           </CardDescription>
         </CardHeader>
         <CardContent>
           <details>
-            <summary className="cursor-pointer text-sm font-medium text-purple-700 hover:text-purple-800">
+            <summary className="cursor-pointer text-sm font-medium hover:underline">
               View Required Scopes
             </summary>
-            <div className="space-y-3 mt-3">
-              <div className="flex items-center gap-3 p-2 rounded bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">channels:history</p>
-                  <p className="text-xs text-muted-foreground">Read public channel messages</p>
+            <div className="space-y-2 mt-3">
+              {[
+                { scope: 'channels:history', desc: 'Read public channel messages' },
+                { scope: 'channels:read', desc: 'List public channels' },
+                { scope: 'groups:history', desc: 'Read private channel messages' },
+                { scope: 'groups:read', desc: 'List private channels' },
+                { scope: 'users:read', desc: 'View people in workspace' },
+                { scope: 'users:read.email', desc: 'View email addresses' },
+              ].map((item) => (
+                <div key={item.scope} className="flex items-start gap-2 p-2 border rounded text-sm">
+                  <CheckCircle className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{item.scope}</p>
+                    <p className="text-xs text-muted-foreground">{item.desc}</p>
+                  </div>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-2 rounded bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">channels:read</p>
-                  <p className="text-xs text-muted-foreground">List public channels</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-2 rounded bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">groups:history</p>
-                  <p className="text-xs text-muted-foreground">Read private channel messages (when invited)</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-2 rounded bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">groups:read</p>
-                  <p className="text-xs text-muted-foreground">List private channels</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-2 rounded bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">users:read</p>
-                  <p className="text-xs text-muted-foreground">View people in workspace</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-2 rounded bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">users:read.email</p>
-                  <p className="text-xs text-muted-foreground">View email addresses</p>
-                </div>
-              </div>
+              ))}
             </div>
           </details>
         </CardContent>
       </Card>
 
-      {/* API Information */}
+      {/* Usage Guide */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5" />
-            How to Use Slack Integration
+            <Info className="h-4 w-4 text-muted-foreground" />
+            How to Use
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -441,7 +412,7 @@ export default function SlackSettingsPage() {
             <Info className="h-4 w-4" />
             <AlertDescription className="text-sm">
               After configuring your bot token, navigate to the Slack dashboard to view team member profiles
-              and channel summaries. The analysis runs automatically when you view users or channels.
+              and channel summaries.
             </AlertDescription>
           </Alert>
 
@@ -450,8 +421,8 @@ export default function SlackSettingsPage() {
             <ol className="list-decimal list-inside space-y-1 pl-2">
               <li>Configure your bot token above</li>
               <li>Invite the bot to your Slack channels</li>
-              <li>Go to Slack dashboard to view team insights</li>
-              <li>Analysis focuses on team collaboration and daily activity</li>
+              <li>Go to Slack dashboard to view insights</li>
+              <li>Analysis focuses on team collaboration and activity</li>
             </ol>
           </div>
         </CardContent>

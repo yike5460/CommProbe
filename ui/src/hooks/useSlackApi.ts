@@ -375,3 +375,43 @@ export const useTestSlackConnection = () => {
     },
   });
 };
+
+/**
+ * Delete user profile
+ */
+export const useDeleteSlackUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId?: string }) =>
+      slackApiService.deleteUserProfile(userId, workspaceId),
+    onSuccess: () => {
+      // Invalidate users list
+      queryClient.invalidateQueries({ queryKey: ['slack', 'users'] });
+    },
+    meta: {
+      successMessage: 'User profile deleted successfully',
+      errorMessage: 'Failed to delete user profile',
+    },
+  });
+};
+
+/**
+ * Delete channel summary
+ */
+export const useDeleteSlackChannel = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ channelId, workspaceId }: { channelId: string; workspaceId?: string }) =>
+      slackApiService.deleteChannelSummary(channelId, workspaceId),
+    onSuccess: () => {
+      // Invalidate channels list
+      queryClient.invalidateQueries({ queryKey: ['slack', 'channels'] });
+    },
+    meta: {
+      successMessage: 'Channel summary deleted successfully',
+      errorMessage: 'Failed to delete channel summary',
+    },
+  });
+};

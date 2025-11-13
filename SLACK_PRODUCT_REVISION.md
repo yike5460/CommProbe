@@ -1472,15 +1472,38 @@ export default function SlackSettingsPage() {
 
 ## 🎨 Design Principles
 
-### Visual Design
-- **Color Palette**:
-  - Primary: Purple (#8b5cf6) - Slack brand color
-  - Activity: Gradient blues (#3b82f6 → #6366f1)
-  - Success: Green (#22c55e)
-  - Warning: Yellow (#eab308)
-- **Typography**: Clean, modern, readable
-- **Spacing**: Generous whitespace, clear hierarchy
-- **Interactions**: Smooth transitions, hover effects, loading states
+### Theme Consistency Update (November 13, 2025)
+
+**Issue Identified**: Initial implementation used bright gradients and distinct colors (purple-500, blue-500, green-50, etc.) that were visually inconsistent with the main app's minimal grayscale theme.
+
+**Resolution Applied**: All Slack components revised to use theme-native colors:
+- ❌ Removed: Bright gradient backgrounds (purple-500 to purple-700, blue-500 to indigo-600)
+- ❌ Removed: Colored metric cards (bg-purple-50, bg-blue-50, bg-green-50)
+- ❌ Removed: Bright colored icons and text (text-purple-700, text-blue-800)
+- ✅ Added: `bg-muted`, `text-foreground`, `text-muted-foreground`
+- ✅ Added: `border` instead of colored borders
+- ✅ Added: `hsl(var(--primary))` for charts instead of hardcoded colors
+- ✅ Added: Subtle hover effects with standard `hover:shadow-lg`
+
+**Files Revised for Theme Consistency**:
+1. `SlackUserCard.tsx` - Removed purple gradients, using `bg-muted` avatars
+2. `SlackChannelCard.tsx` - Removed blue gradients, using `bg-muted` icons
+3. `User detail page` - Removed purple hero gradient, using Card with `bg-muted` icon
+4. `Channel detail page` - Removed blue hero gradient, using Card with `bg-muted` icon
+5. `Settings page` - Removed colored alert backgrounds, using standard Alert components
+
+**Result**: Slack integration now maintains visual harmony with the rest of the application.
+
+### Visual Design (Revised)
+- **Color Palette**: Theme-native colors using CSS variables
+  - Primary: `hsl(var(--primary))` - Dark gray/black from theme
+  - Muted: `hsl(var(--muted))` - Light gray backgrounds
+  - Foreground: `hsl(var(--foreground))` - Text color
+  - Border: `hsl(var(--border))` - Subtle borders
+  - Charts: `hsl(var(--primary))` with opacity variations
+- **Typography**: Clean, modern, readable (unchanged)
+- **Spacing**: Generous whitespace, clear hierarchy (unchanged)
+- **Interactions**: Subtle hover effects, standard loading states
 
 ### User Experience
 - **Personal Focus**: Every element should help members understand themselves and teammates

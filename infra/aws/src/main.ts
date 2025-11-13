@@ -607,6 +607,7 @@ def handler(event, context):
 
     const slackUserByIdResource = slackUsersResource.addResource('{user_id}');
     slackUserByIdResource.addMethod('GET', lambdaIntegration); // GET /slack/users/{user_id}
+    slackUserByIdResource.addMethod('DELETE', lambdaIntegration); // DELETE /slack/users/{user_id}
 
     // Channel analysis endpoints
     const slackAnalyzeChannelResource = slackAnalyzeResource.addResource('channel');
@@ -617,6 +618,7 @@ def handler(event, context):
 
     const slackChannelByIdResource = slackChannelsResource.addResource('{channel_id}');
     slackChannelByIdResource.addMethod('GET', lambdaIntegration); // GET /slack/channels/{channel_id}
+    slackChannelByIdResource.addMethod('DELETE', lambdaIntegration); // DELETE /slack/channels/{channel_id}
 
     // Job status endpoint
     const slackJobsResource = slackResource.addResource('jobs');

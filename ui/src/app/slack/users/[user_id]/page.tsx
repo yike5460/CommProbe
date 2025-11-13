@@ -1,6 +1,7 @@
 /**
  * Slack User Profile Detail Page
  * Comprehensive view with activity timeline, charts, and collaboration network
+ * Theme: Consistent with main app (minimal, subtle colors)
  */
 
 'use client';
@@ -13,11 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useSlackUserProfile, useAnalyzeSlackUser } from '@/hooks/useSlackApi';
+import { useSlackUserProfile, useAnalyzeSlackUser, useDeleteSlackUser } from '@/hooks/useSlackApi';
 import {
-  Hash,
   MessageCircle,
-  MessageSquare,
   Activity,
   Sparkles,
   Brain,
@@ -27,6 +26,8 @@ import {
   RefreshCw,
   TrendingUp,
   Users,
+  Trash2,
+  Hash,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -41,6 +42,116 @@ import {
   CartesianGrid,
 } from 'recharts';
 
+// Helper function to render markdown text with proper formatting
+function renderMarkdownText(text: string) {
+  if (!text) return null;
+
+  const lines = text.split('\n');
+  const elements: JSX.Element[] = [];
+  let listItems: JSX.Element[] = [];
+
+  const flushList = (index: number) => {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={`list-${index}`} className="list-disc ml-6 space-y-1 mb-3">
+          {listItems}
+        </ul>
+      );
+      listItems = [];
+    }
+  };
+
+  // Helper to clean text: remove emojis and process bold
+  const cleanAndFormatText = (text: string) => {
+    // Remove emojis
+    let cleaned = text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+
+    // Process bold (**text**)
+    const parts: (string | JSX.Element)[] = [];
+    const boldRegex = /\*\*(.*?)\*\*/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = boldRegex.exec(cleaned)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(cleaned.substring(lastIndex, match.index));
+      }
+      parts.push(
+        <strong key={match.index} className="font-semibold">
+          {match[1]}
+        </strong>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < cleaned.length) {
+      parts.push(cleaned.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : cleaned;
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList(idx);
+      return;
+    }
+
+    // Main headers (# Title)
+    if (trimmed.match(/^# [^#]/)) {
+      flushList(idx);
+      const content = cleanAndFormatText(trimmed.replace(/^# /, ''));
+      elements.push(
+        <h2 key={idx} className="text-2xl font-bold mt-6 mb-3 first:mt-0">
+          {content}
+        </h2>
+      );
+    }
+    // Section headers (##)
+    else if (trimmed.startsWith('## ')) {
+      flushList(idx);
+      const content = cleanAndFormatText(trimmed.replace(/^## /, ''));
+      elements.push(
+        <h3 key={idx} className="text-lg font-bold mt-5 mb-2">
+          {content}
+        </h3>
+      );
+    }
+    // Sub headers (###)
+    else if (trimmed.startsWith('### ')) {
+      flushList(idx);
+      const content = cleanAndFormatText(trimmed.replace(/^### /, ''));
+      elements.push(
+        <h4 key={idx} className="text-base font-semibold mt-4 mb-2">
+          {content}
+        </h4>
+      );
+    }
+    // Bullet points (-)
+    else if (trimmed.startsWith('- ')) {
+      const content = cleanAndFormatText(trimmed.substring(2));
+      listItems.push(
+        <li key={idx} className="text-sm text-muted-foreground">
+          {content}
+        </li>
+      );
+    }
+    // Regular paragraphs
+    else {
+      flushList(idx);
+      const content = cleanAndFormatText(trimmed);
+      elements.push(
+        <p key={idx} className="text-sm text-muted-foreground mb-3 leading-relaxed">
+          {content}
+        </p>
+      );
+    }
+  });
+
+  flushList(lines.length);
+  return <div className="space-y-1">{elements}</div>;
+}
+
 export default function UserProfileDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -48,6 +159,7 @@ export default function UserProfileDetailPage() {
 
   const { data: profile, isLoading, error, refetch } = useSlackUserProfile(userId);
   const analyzeUser = useAnalyzeSlackUser();
+  const deleteUser = useDeleteSlackUser();
 
   const handleReanalyze = async () => {
     if (!profile) return;
@@ -63,6 +175,22 @@ export default function UserProfileDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!profile) return;
+    if (!confirm(`Are you sure you want to delete the profile for ${profile.display_name || profile.user_name}?`)) {
+      return;
+    }
+    try {
+      await deleteUser.mutateAsync({
+        userId: profile.user_id,
+        workspaceId: profile.workspace_id,
+      });
+      router.push('/slack/users');
+    } catch (error) {
+      console.error('Failed to delete profile:', error);
+    }
+  };
+
   const formatLastActive = (timestamp: number): string => {
     try {
       return formatDistanceToNow(new Date(timestamp * 1000), { addSuffix: true });
@@ -71,9 +199,9 @@ export default function UserProfileDetailPage() {
     }
   };
 
-  // Prepare activity timeline data (mock for now - can be enhanced with real data)
-  const activityTimelineData = profile?.channel_breakdown?.slice(0, 10).map((ch, idx) => ({
-    date: `Week ${idx + 1}`,
+  // Prepare activity timeline data
+  const activityTimelineData = profile?.channel_breakdown?.map((ch) => ({
+    name: ch.channel_name.length > 15 ? ch.channel_name.substring(0, 15) + '...' : ch.channel_name,
     messages: ch.message_count,
     replies: ch.reply_count,
   })) || [];
@@ -116,66 +244,87 @@ export default function UserProfileDetailPage() {
         Back to Users
       </Button>
 
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-purple-500 to-purple-700 rounded-xl p-8 text-white mb-6">
-        <div className="flex items-center gap-6">
-          <Avatar className="h-24 w-24 border-4 border-white shadow-lg">
-            <AvatarFallback className="text-3xl bg-gradient-to-br from-purple-600 to-purple-800 text-white">
-              {profile.user_name[0]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">{profile.display_name || profile.user_name}</h1>
-            <p className="text-purple-100">{profile.user_email}</p>
-            {profile.most_active_time && (
-              <p className="text-sm text-purple-200 mt-1">
-                Most active: {profile.most_active_time}
-              </p>
-            )}
-            <div className="flex gap-4 mt-3">
-              <div>
-                <p className="text-2xl font-bold">{profile.total_activity}</p>
-                <p className="text-xs text-purple-200">Total Activity</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{profile.active_channels}</p>
-                <p className="text-xs text-purple-200">Active Channels</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {profile.engagement_score?.toFixed(1) || '0.0'}
+      {/* Header Section */}
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-6">
+            <Avatar className="h-20 w-20">
+              <AvatarFallback className="text-2xl bg-muted text-foreground">
+                {profile.user_name?.substring(0, 2)?.toUpperCase() || 'U'}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold">{profile.display_name || profile.user_name}</h1>
+              <p className="text-muted-foreground">{profile.user_email}</p>
+              {profile.most_active_time && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Most active: {profile.most_active_time}
                 </p>
-                <p className="text-xs text-purple-200">Engagement</p>
-              </div>
-              {profile.activity_trend && (
-                <div>
-                  <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    {profile.activity_trend}
-                  </Badge>
-                </div>
               )}
+              <div className="flex gap-4 mt-3">
+                <div>
+                  <p className="text-xl font-bold">{profile.total_activity}</p>
+                  <p className="text-xs text-muted-foreground">Total Activity</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{profile.active_channels}</p>
+                  <p className="text-xs text-muted-foreground">Active Channels</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold">
+                    {profile.engagement_score?.toFixed(1) || '0.0'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Engagement</p>
+                </div>
+                {profile.activity_trend && (
+                  <div>
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <TrendingUp className="h-3 w-3" />
+                      {profile.activity_trend}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleReanalyze}
+                disabled={analyzeUser.isPending}
+              >
+                {analyzeUser.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleDelete}
+                disabled={deleteUser.isPending}
+              >
+                {deleteUser.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </>
+                )}
+              </Button>
             </div>
           </div>
-          <Button
-            variant="secondary"
-            onClick={handleReanalyze}
-            disabled={analyzeUser.isPending}
-          >
-            {analyzeUser.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Analysis
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -186,29 +335,41 @@ export default function UserProfileDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Activity Timeline</CardTitle>
-                <CardDescription>Message and reply activity over time</CardDescription>
+                <CardDescription>Message and reply activity by channel</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={activityTimelineData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 12 }}
+                      stroke="#9ca3af"
+                    />
+                    <YAxis stroke="#9ca3af" />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.5rem',
+                      }}
+                    />
                     <Area
                       type="monotone"
                       dataKey="messages"
                       stackId="1"
-                      stroke="#8b5cf6"
-                      fill="#c4b5fd"
+                      stroke="#6366f1"
+                      fill="#6366f1"
+                      fillOpacity={0.6}
                       name="Messages"
                     />
                     <Area
                       type="monotone"
                       dataKey="replies"
                       stackId="1"
-                      stroke="#6366f1"
-                      fill="#a5b4fc"
+                      stroke="#8b5cf6"
+                      fill="#8b5cf6"
+                      fillOpacity={0.4}
                       name="Replies"
                     />
                   </AreaChart>
@@ -225,16 +386,33 @@ export default function UserProfileDetailPage() {
                 <CardDescription>Message activity across channels</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={Math.max(200, profile.channel_breakdown.length * 40)}>
                   <BarChart
-                    data={profile.channel_breakdown.slice(0, 10)}
+                    data={profile.channel_breakdown}
                     layout="horizontal"
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="channel_name" type="category" width={100} />
-                    <Tooltip />
-                    <Bar dataKey="message_count" fill="#8b5cf6" name="Messages" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis type="number" stroke="#9ca3af" />
+                    <YAxis
+                      dataKey="channel_name"
+                      type="category"
+                      width={120}
+                      tick={{ fontSize: 12 }}
+                      stroke="#9ca3af"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.5rem',
+                      }}
+                    />
+                    <Bar
+                      dataKey="message_count"
+                      fill="#6366f1"
+                      name="Messages"
+                      radius={[0, 4, 4, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -243,21 +421,28 @@ export default function UserProfileDetailPage() {
 
           {/* Recent Topics */}
           {profile.recent_topics && profile.recent_topics.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Topics</CardTitle>
-                <CardDescription>Topics discussed in the last 7 days</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {profile.recent_topics.map((topic, i) => (
-                    <Badge key={i} variant="secondary" className="text-sm">
-                      {topic}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            (() => {
+              const validTopics = profile.recent_topics.filter(
+                topic => !topic.includes('analysis in progress')
+              );
+              return validTopics.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent Topics</CardTitle>
+                    <CardDescription>Topics discussed in the last 7 days</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {validTopics.map((topic, i) => (
+                        <Badge key={i} variant="secondary" className="text-sm">
+                          {topic}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()
           )}
         </div>
 
@@ -268,12 +453,12 @@ export default function UserProfileDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-purple-500" />
+                  <Sparkles className="h-4 w-4 text-muted-foreground" />
                   Personal Summary
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   {profile.ai_persona_summary}
                 </p>
               </CardContent>
@@ -282,20 +467,27 @@ export default function UserProfileDetailPage() {
 
           {/* Currently Exploring */}
           {profile.interests && profile.interests.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Currently Exploring</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {profile.interests.map((interest, i) => (
-                    <Badge key={i} variant="secondary">
-                      {interest}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            (() => {
+              const validInterests = profile.interests.filter(
+                interest => !interest.includes('analysis in progress')
+              );
+              return validInterests.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Interests</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {validInterests.map((interest, i) => (
+                        <Badge key={i} variant="secondary">
+                          {interest}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()
           )}
 
           {/* Collaboration Network */}
@@ -303,7 +495,7 @@ export default function UserProfileDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
+                  <Users className="h-4 w-4 text-muted-foreground" />
                   Top Collaborators
                 </CardTitle>
               </CardHeader>
@@ -313,8 +505,8 @@ export default function UserProfileDetailPage() {
                     <div key={person.user_id} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-xs bg-purple-100 text-purple-700">
-                            {person.user_name[0]?.toUpperCase()}
+                          <AvatarFallback className="text-xs bg-muted text-foreground">
+                            {person.user_name?.substring(0, 2)?.toUpperCase() || 'U'}
                           </AvatarFallback>
                         </Avatar>
                         <span className="text-sm">{person.user_name}</span>
@@ -359,7 +551,7 @@ export default function UserProfileDetailPage() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Last Updated</span>
-                <span className="font-semibold text-xs">
+                <span className="text-xs font-semibold">
                   {formatLastActive(profile.last_updated)}
                 </span>
               </div>
@@ -368,16 +560,47 @@ export default function UserProfileDetailPage() {
 
           {/* Expertise Areas */}
           {profile.expertise_areas && profile.expertise_areas.length > 0 && (
+            (() => {
+              const validExpertise = profile.expertise_areas.filter(
+                area => !area.includes('analysis in progress')
+              );
+              return validExpertise.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Expertise</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {validExpertise.map((area, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {area}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()
+          )}
+
+          {/* Channel Breakdown List */}
+          {profile.channel_breakdown && profile.channel_breakdown.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Expertise Areas</CardTitle>
+                <CardTitle>Active Channels</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {profile.expertise_areas.map((area, i) => (
-                    <Badge key={i} variant="outline">
-                      {area}
-                    </Badge>
+                <div className="space-y-2">
+                  {profile.channel_breakdown.map((ch) => (
+                    <div key={ch.channel_id} className="flex items-center justify-between text-sm p-2 border rounded">
+                      <div className="flex items-center gap-2">
+                        <Hash className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{ch.channel_name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {ch.message_count} msgs
+                      </div>
+                    </div>
                   ))}
                 </div>
               </CardContent>
@@ -386,20 +609,18 @@ export default function UserProfileDetailPage() {
         </div>
       </div>
 
-      {/* Full AI Insights */}
+      {/* Full AI Insights - with markdown rendering */}
       {profile.ai_insights && (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Brain className="h-5 w-5 text-blue-500" />
-              Detailed Activity Analysis
+              <Brain className="h-4 w-4 text-muted-foreground" />
+              Activity Analysis
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="prose prose-sm max-w-none">
-              <p className="text-foreground leading-relaxed whitespace-pre-line">
-                {profile.ai_insights}
-              </p>
+              {renderMarkdownText(profile.ai_insights)}
             </div>
           </CardContent>
         </Card>

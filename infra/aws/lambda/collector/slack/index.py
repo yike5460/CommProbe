@@ -368,7 +368,7 @@ def analyze_channel(
         feature_requests=extract_list_from_text(ai_summary, 'feature requests', max_items=15),
         pain_points=extract_list_from_text(ai_summary, 'pain points', max_items=10),
         sentiment=slack_analyzer.determine_sentiment(ai_summary),
-        key_contributors=extract_contributors(messages),
+        key_contributors=extract_contributors(messages, slack_analyzer),
         product_opportunities=extract_list_from_text(ai_summary, 'opportunities', max_items=10),
         strategic_recommendations=extract_list_from_text(ai_summary, 'recommendations', max_items=10),
         ai_summary=ai_summary,
@@ -448,10 +448,7 @@ def extract_list_from_text(text: str, keyword: str, max_items: int = 10) -> list
                 if item and len(items) < max_items:
                     items.append(item)
 
-    # Fallback: return generic items if parsing failed
-    if not items:
-        items = [f"{keyword.title()} analysis in progress"]
-
+    # Return empty list if parsing failed (don't show placeholder text)
     return items[:max_items]
 
 
@@ -489,8 +486,8 @@ def extract_persona_summary(text: str) -> str:
     return "Engaged team member with diverse interests"
 
 
-def extract_contributors(messages: list, top_n: int = 5) -> list:
-    """Extract top contributors from message list."""
+def extract_contributors(messages: list, slack_analyzer, top_n: int = 5) -> list:
+    """Extract top contributors from message list with user name resolution."""
     from collections import Counter
 
     user_counts = Counter(msg['user'] for msg in messages if msg.get('user'))
@@ -505,10 +502,27 @@ def extract_contributors(messages: list, top_n: int = 5) -> list:
         else:
             level = 'low'
 
+        # Try to resolve actual user name
+        user_name = user_id  # Default to user_id
+        try:
+            user_info = slack_analyzer.client.users_info(user=user_id)
+            if user_info and user_info.get('user'):
+                # Get display name, real name, or name field
+                user_data = user_info['user']
+                user_name = (
+                    user_data.get('profile', {}).get('display_name') or
+                    user_data.get('profile', {}).get('real_name') or
+                    user_data.get('name') or
+                    user_id
+                )
+        except Exception as e:
+            logger.warning(f"Could not resolve user name for {user_id}: {str(e)}")
+            # Keep user_id as fallback
+
         contributors.append(
             KeyContributor(
                 user_id=user_id,
-                user_name=user_id,  # Would need additional lookup for real name
+                user_name=user_name,
                 contribution_level=level
             )
         )

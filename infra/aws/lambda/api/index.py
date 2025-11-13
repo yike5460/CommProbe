@@ -158,6 +158,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return handle_slack_get_config(event, headers)
         elif http_method == 'PUT' and path == '/slack/config':
             return handle_slack_update_config(event, headers)
+        elif http_method == 'DELETE' and path.startswith('/slack/users/'):
+            return handle_slack_delete_user(event, headers)
+        elif http_method == 'DELETE' and path.startswith('/slack/channels/'):
+            return handle_slack_delete_channel(event, headers)
         elif http_method == 'GET' and path == '/':
             return handle_api_documentation(headers)
         else:
@@ -1781,6 +1785,86 @@ def handle_slack_update_config(event: Dict[str, Any], headers: Dict[str, str]) -
     except Exception as e:
         print(f"Error updating Slack config: {str(e)}")
         return create_response(500, {'error': 'Failed to update Slack configuration', 'message': str(e)}, headers)
+
+
+def handle_slack_delete_user(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle DELETE /slack/users/{user_id} - Delete user profile"""
+    try:
+        path = event.get('path', '')
+        path_parts = path.split('/')
+        user_id = path_parts[3] if len(path_parts) > 3 else None
+
+        if not user_id:
+            return create_response(400, {'error': 'User ID is required'}, headers)
+
+        # Get workspace_id from query params
+        query_params = event.get('queryStringParameters') or {}
+        workspace_id = query_params.get('workspace_id', 'default')
+
+        # Delete from DynamoDB
+        profiles_table_name = os.environ.get('SLACK_PROFILES_TABLE_NAME')
+        if not profiles_table_name:
+            return create_response(500, {'error': 'Profiles table not configured'}, headers)
+
+        profiles_table = dynamodb.Table(profiles_table_name)
+
+        # Delete the item (note: table uses uppercase PK/SK)
+        profiles_table.delete_item(
+            Key={
+                'PK': f'USER#{user_id}',
+                'SK': f'WORKSPACE#{workspace_id}'
+            }
+        )
+
+        return create_response(200, {
+            'message': 'User profile deleted successfully',
+            'user_id': user_id,
+            'workspace_id': workspace_id
+        }, headers)
+
+    except Exception as e:
+        print(f"Error deleting user profile: {str(e)}")
+        return create_response(500, {'error': 'Failed to delete user profile', 'message': str(e)}, headers)
+
+
+def handle_slack_delete_channel(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle DELETE /slack/channels/{channel_id} - Delete channel summary"""
+    try:
+        path = event.get('path', '')
+        path_parts = path.split('/')
+        channel_id = path_parts[3] if len(path_parts) > 3 else None
+
+        if not channel_id:
+            return create_response(400, {'error': 'Channel ID is required'}, headers)
+
+        # Get workspace_id from query params
+        query_params = event.get('queryStringParameters') or {}
+        workspace_id = query_params.get('workspace_id', 'default')
+
+        # Delete from DynamoDB
+        profiles_table_name = os.environ.get('SLACK_PROFILES_TABLE_NAME')
+        if not profiles_table_name:
+            return create_response(500, {'error': 'Profiles table not configured'}, headers)
+
+        profiles_table = dynamodb.Table(profiles_table_name)
+
+        # Delete the item (note: table uses uppercase PK/SK)
+        profiles_table.delete_item(
+            Key={
+                'PK': f'CHANNEL#{channel_id}',
+                'SK': f'WORKSPACE#{workspace_id}'
+            }
+        )
+
+        return create_response(200, {
+            'message': 'Channel summary deleted successfully',
+            'channel_id': channel_id,
+            'workspace_id': workspace_id
+        }, headers)
+
+    except Exception as e:
+        print(f"Error deleting channel summary: {str(e)}")
+        return create_response(500, {'error': 'Failed to delete channel summary', 'message': str(e)}, headers)
 
 
 def create_response(status_code: int, body: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
