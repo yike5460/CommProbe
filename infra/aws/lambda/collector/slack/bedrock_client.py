@@ -163,23 +163,22 @@ class BedrockContentAnalyzer:
 
         combined_content = "\n\n".join(all_texts[:100])  # Limit to first 100 items
 
-        prompt = f"""Analyze {user_name}'s activity in the Slack channel #{channel_name} to understand their interests, focus areas, and opinions.
+        prompt = f"""Analyze {user_name}'s recent activity in the Slack channel #{channel_name} to provide a personal activity summary.
 
 Content ({len(messages)} messages, {len(replies)} replies):
 {combined_content}
 
-Provide a comprehensive analysis:
-1. **Core Interests**: What topics, products, or areas is this user most engaged with?
-2. **Key Opinions**: What are their stated opinions, preferences, and viewpoints on important topics?
-3. **Focus Areas**: What problems are they trying to solve? What are they working on?
-4. **Expertise & Knowledge**: What domains do they demonstrate expertise in?
-5. **Communication Style**: How do they engage (collaborative, directive, supportive, analytical)?
-6. **Pain Points**: What challenges or frustrations do they express?
-7. **Influence Level**: How do they influence discussions and decisions?
+Provide a friendly, personal activity summary:
+1. **Activity Overview**: Summarize their participation level and engagement in this channel
+2. **Topics Discussed**: What topics and subjects did they discuss?
+3. **Personal Interests**: What personal interests or professional passions are evident?
+4. **Collaboration Style**: How do they interact with team members?
+5. **Key Contributions**: What valuable insights or help did they provide?
+6. **Current Focus**: What are they currently working on or thinking about?
 
-Format your response in clear sections with headers."""
+Write in a friendly, supportive tone that helps team members understand each other better. Format your response in clear sections with headers."""
 
-        system_prompt = "You are an expert at understanding individual communication patterns and extracting personal interests, opinions, and focus areas from workplace conversations. Provide deep psychological and professional insights."
+        system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities, interests, and contributions. Focus on personal growth, team dynamics, and mutual understanding rather than product management. Write in a warm, conversational tone."
 
         result = self._invoke_claude(prompt, system_prompt, max_tokens=2048, temperature=0.3)
 
@@ -233,24 +232,23 @@ Format your response in clear sections with headers."""
 
         combined_content = "\n".join(formatted_messages)
 
-        prompt = f"""Analyze the Slack channel #{channel_name} for product management insights and strategic opportunities.
+        prompt = f"""Provide a daily summary of conversations in the Slack channel #{channel_name}.
 
 Messages (sample of {len(sampled_messages)} from {len(all_messages)} total):
 {combined_content}
 
-Provide a comprehensive product-focused analysis:
-1. **Channel Purpose & Context**: What is this channel's role in the organization?
-2. **Key Discussion Topics**: What are the primary themes? (prioritize product, feature, and user-related topics)
-3. **User Feedback & Feature Requests**: What features, improvements, or capabilities are users requesting?
-4. **Pain Points & Blockers**: What problems, frustrations, or obstacles are being discussed?
-5. **Sentiment Analysis**: What's the overall mood and satisfaction level?
-6. **Key Contributors & Influencers**: Who are the most active and influential participants?
-7. **Product Opportunities**: What actionable opportunities exist for product improvements or new features?
-8. **Strategic Recommendations**: What should product managers prioritize based on these conversations?
+Provide a conversational daily digest:
+1. **Channel Activity Overview**: Overall participation level and engagement in this period
+2. **Main Discussion Topics**: What were the primary topics discussed?
+3. **Interesting Highlights**: Notable conversations, insights, or memorable moments
+4. **Active Participants**: Who contributed most to discussions?
+5. **Helpful Content**: Useful information, tips, resources, or knowledge shared
+6. **Team Mood**: What's the overall team sentiment and energy level?
+7. **Ongoing Discussions**: Any topics that will continue or action items mentioned?
 
-Format your response with clear section headers and bullet points for actionability."""
+Write as a friendly daily digest that helps team members catch up on what they missed. Format your response with clear section headers and conversational language."""
 
-        system_prompt = "You are an expert product manager analyst specializing in extracting strategic insights from team communications. Focus on user needs, feature requests, pain points, and opportunities that inform product roadmaps."
+        system_prompt = "You are a friendly team collaboration assistant creating daily channel summaries. Focus on helping team members stay connected, catch up on discussions, and understand team dynamics. Write in a warm, conversational tone that makes people feel included and informed."
 
         result = self._invoke_claude(prompt, system_prompt, max_tokens=3072, temperature=0.4)
 
@@ -293,7 +291,7 @@ Format your response with clear section headers and bullet points for actionabil
 
         combined_analyses = "\n".join(analyses_text)
 
-        prompt = f"""Based on {user_name}'s activity across multiple Slack channels, provide a comprehensive profile of their interests, opinions, and engagement patterns.
+        prompt = f"""Based on {user_name}'s recent activity across multiple Slack channels, create a friendly personal activity summary.
 
 Activity Summary:
 - Total Channels: {summary_stats.get('total_channels_joined', 0)}
@@ -301,22 +299,21 @@ Activity Summary:
 - Total Messages: {summary_stats.get('total_messages', 0)}
 - Total Replies: {summary_stats.get('total_replies', 0)}
 
-Per-Channel Analyses:
+Per-Channel Activities:
 {combined_analyses}
 
-Provide a comprehensive cross-channel analysis:
-1. **Overall Interests & Focus**: What are {user_name}'s primary interests and focus areas across all channels?
-2. **Key Opinions & Viewpoints**: What consistent opinions, preferences, or viewpoints do they express?
-3. **Expertise Profile**: What areas do they demonstrate expertise in? What knowledge do they share?
-4. **Communication Patterns**: How do they communicate across different contexts and channels?
-5. **Pain Points & Concerns**: What recurring challenges or frustrations do they express?
-6. **Influence & Impact**: How do they influence conversations, decisions, and team direction?
-7. **Engagement Style**: How do they choose to engage (when do they participate heavily vs. lightly)?
-8. **User Persona Summary**: Create a concise persona that captures who this person is professionally
+Create a warm, personal activity summary:
+1. **Activity Highlights**: What has {user_name} been up to recently? Summarize their main activities and contributions
+2. **Areas of Interest**: What topics are they passionate about or actively exploring?
+3. **Collaboration Highlights**: How have they helped or collaborated with teammates? Any notable interactions?
+4. **Personal Growth**: What are they learning, exploring, or developing?
+5. **Engagement Pattern**: When and where are they most active? What drives their participation?
+6. **Team Connections**: Who do they interact with most frequently?
+7. **Personal Summary**: Create a friendly 2-3 sentence description that captures their recent vibe, focus, and energy
 
-Be insightful, specific, and reference concrete examples from their activity."""
+Write as if you're a friendly colleague helping others understand what {user_name} is up to. Be specific, reference concrete examples, and maintain a supportive, appreciative tone."""
 
-        system_prompt = "You are an expert at building deep user profiles from communication patterns. Focus on understanding the person's authentic interests, opinions, and professional identity across multiple contexts."
+        system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities and interests. Focus on building connections, celebrating contributions, and fostering team understanding. Write in a warm, personal tone that makes people feel valued and connected."
 
         result = self._invoke_claude(prompt, system_prompt, max_tokens=4096, temperature=0.3)
 

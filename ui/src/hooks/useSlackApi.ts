@@ -26,6 +26,9 @@ export const slackQueryKeys = {
   channels: (workspaceId?: string, limit?: number) => ['slack', 'channels', workspaceId, limit] as const,
   channelSummary: (channelId: string, workspaceId?: string) =>
     ['slack', 'channel', channelId, workspaceId] as const,
+
+  // Configuration
+  config: () => ['slack', 'config'] as const,
 } as const;
 
 // ================================
@@ -320,5 +323,55 @@ export const useSlackJobStatus = (jobId: string | null) => {
     },
     staleTime: 0, // Always fetch fresh status
     retry: 3,
+  });
+};
+
+// ================================
+// Configuration Hooks
+// ================================
+
+/**
+ * Get Slack configuration
+ */
+export const useSlackConfig = () => {
+  return useQuery({
+    queryKey: slackQueryKeys.config(),
+    queryFn: () => slackApiService.getSlackConfig(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    meta: {
+      errorMessage: 'Failed to load Slack configuration',
+    },
+  });
+};
+
+/**
+ * Update Slack configuration
+ */
+export const useUpdateSlackConfig = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: slackApiService.updateSlackConfig,
+    onSuccess: () => {
+      // Invalidate config to refetch
+      queryClient.invalidateQueries({ queryKey: slackQueryKeys.config() });
+    },
+    meta: {
+      successMessage: 'Slack configuration updated successfully',
+      errorMessage: 'Failed to update Slack configuration',
+    },
+  });
+};
+
+/**
+ * Test Slack connection
+ */
+export const useTestSlackConnection = () => {
+  return useMutation({
+    mutationFn: () => slackApiService.testConnection(),
+    meta: {
+      errorMessage: 'Connection test failed',
+    },
   });
 };

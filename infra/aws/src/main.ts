@@ -272,6 +272,7 @@ export class LegalCrawlerStack extends Stack {
         SLACK_BOT_TOKEN: slackBotToken || 'DISABLED',
         SLACK_PROFILES_TABLE: slackProfilesTable.tableName,
         SLACK_JOBS_TABLE: slackJobsTable.tableName,
+        CONFIG_TABLE_NAME: configTable.tableName,
         AWS_BEDROCK_REGION: this.region,
         MODEL_ID: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
       },
@@ -285,6 +286,7 @@ export class LegalCrawlerStack extends Stack {
     // Grant DynamoDB permissions to Slack collector
     slackProfilesTable.grantReadWriteData(slackCollectorFunction);
     slackJobsTable.grantWriteData(slackCollectorFunction);
+    configTable.grantReadData(slackCollectorFunction);
 
     // Grant Bedrock permissions to Slack collector (inline AI analysis)
     slackCollectorFunction.addToRolePolicy(
@@ -292,11 +294,8 @@ export class LegalCrawlerStack extends Stack {
         effect: iam.Effect.ALLOW,
         actions: ['bedrock:InvokeModel'],
         resources: [
-          `arn:aws:bedrock:${this.region}::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:*::foundation-model/anthropic.claude-*`,
+          `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
         ],
       })
     );
@@ -323,11 +322,8 @@ export class LegalCrawlerStack extends Stack {
         effect: iam.Effect.ALLOW,
         actions: ['bedrock:InvokeModel'],
         resources: [
-          `arn:aws:bedrock:${this.region}::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
-          `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0`,
+          `arn:aws:bedrock:*::foundation-model/anthropic.claude-*`,
+          `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
         ],
       })
     );
@@ -548,6 +544,7 @@ def handler(event, context):
     // Lambda integration
     const lambdaIntegration = new apigateway.LambdaIntegration(apiFunction, {
       requestTemplates: { 'application/json': `{ "statusCode": "200" }` },
+      allowTestInvoke: false,  // Disable test-invoke-stage permissions to reduce policy size by 50%
     });
 
     // API routes
@@ -626,6 +623,11 @@ def handler(event, context):
     const slackJobByIdResource = slackJobsResource.addResource('{job_id}');
     const slackJobStatusResource = slackJobByIdResource.addResource('status');
     slackJobStatusResource.addMethod('GET', lambdaIntegration); // GET /slack/jobs/{job_id}/status
+
+    // Configuration endpoints
+    const slackConfigResource = slackResource.addResource('config');
+    slackConfigResource.addMethod('GET', lambdaIntegration); // GET /slack/config
+    slackConfigResource.addMethod('PUT', lambdaIntegration); // PUT /slack/config
 
     // Output the API URL
     new CfnOutput(this, 'ApiUrl', {

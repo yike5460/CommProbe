@@ -26,7 +26,7 @@ usage() {
     echo "  Enhanced Analytics Tests: trends analysis, competitor intelligence"
     echo "  Operational Tests: execution cancellation, execution logs"
     echo "  Twitter Integration Tests: multi-platform collection, platform filtering, Twitter insights"
-    echo "  Slack Integration Tests: channel/user analysis triggers, profile retrieval, list operations, job tracking"
+    echo "  Slack Integration Tests: config endpoints, channel/user analysis triggers, profile retrieval, list operations, job tracking"
     echo ""
     echo "Note: Slack tests require SLACK_BOT_TOKEN to be configured in Lambda environment."
     echo "      If not configured, tests will verify proper 'disabled' error handling."
@@ -98,8 +98,8 @@ done
 # Set region-specific configuration after parsing arguments
 case $AWS_REGION in
     us-west-2)
-        API_BASE_URL="https://x1kxsb6l17.execute-api.us-west-2.amazonaws.com/v1"
-        API_KEY="vPJlvaa0DS9tqxH41eNIA20Sofzb0cG719d8dd0i"
+        API_BASE_URL="https://6bsn9muwfi.execute-api.us-west-2.amazonaws.com/v1"
+        API_KEY="fyd85y7w1j"
         S3_BUCKET="supio-raw-data-705247044519-us-west-2"
         ;;
     us-east-1)
@@ -1396,7 +1396,121 @@ test_slack_job_status_tracking() {
     fi
 }
 
-# Test 27: Slack Integration Comprehensive Test
+# Test 27: Slack Configuration Endpoints
+test_slack_config_endpoints() {
+    log_info "Testing Slack configuration endpoints..."
+    log_info "  This validates Phase 1.6 implementation (bot token configuration API)"
+
+    # Test GET /slack/config endpoint
+    log_info "  Step 1/3: Testing GET /slack/config..."
+    local get_response
+    get_response=$(api_request "GET" "/slack/config")
+
+    if echo "$get_response" | jq -e '.workspace_id' > /dev/null 2>&1; then
+        local workspace_id bot_configured default_days
+        workspace_id=$(echo "$get_response" | jq -r '.workspace_id')
+        bot_configured=$(echo "$get_response" | jq -r '.bot_token_configured')
+        default_days=$(echo "$get_response" | jq -r '.default_analysis_days')
+
+        add_result "PASS" "Slack Config GET" "workspace: $workspace_id, token configured: $bot_configured, default days: $default_days"
+        log_success "  GET /slack/config working"
+
+        # Verify token masking
+        if echo "$get_response" | jq -e '.bot_token_masked' > /dev/null 2>&1; then
+            local masked_token
+            masked_token=$(echo "$get_response" | jq -r '.bot_token_masked')
+            if [[ "$masked_token" == *"***"* ]] || [[ "$masked_token" == "Not configured" ]]; then
+                add_result "PASS" "Slack Config Token Masking" "Token properly masked: $masked_token"
+                log_success "  Bot token masking working correctly"
+            else
+                add_result "FAIL" "Slack Config Token Masking" "Token not properly masked"
+                log_error "  Bot token not masked properly"
+                return 1
+            fi
+        fi
+    else
+        if echo "$get_response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$get_response" | jq -r '.error')
+            add_result "FAIL" "Slack Config GET" "Error: $error_msg"
+            log_error "  GET /slack/config failed: $error_msg"
+            return 1
+        else
+            add_result "FAIL" "Slack Config GET" "Invalid response format"
+            log_error "  GET /slack/config returned invalid response"
+            return 1
+        fi
+    fi
+
+    # Test PUT /slack/config endpoint
+    log_info "  Step 2/3: Testing PUT /slack/config..."
+    local update_data='{"workspace_id": "test-workspace", "workspace_name": "Test Workspace", "default_analysis_days": 14}'
+    local put_response
+    put_response=$(api_request "PUT" "/slack/config" "$update_data")
+
+    if echo "$put_response" | jq -e '.message' > /dev/null 2>&1; then
+        local message
+        message=$(echo "$put_response" | jq -r '.message')
+        add_result "PASS" "Slack Config PUT" "Update successful: $message"
+        log_success "  PUT /slack/config working"
+
+        # Verify response doesn't expose bot token
+        if echo "$put_response" | jq -e '.config.bot_token' > /dev/null 2>&1; then
+            add_result "FAIL" "Slack Config Security" "Bot token exposed in response"
+            log_error "  Security issue: bot token in PUT response"
+            return 1
+        else
+            add_result "PASS" "Slack Config Security" "Bot token not exposed in response"
+            log_success "  Bot token properly secured in PUT response"
+        fi
+    else
+        if echo "$put_response" | jq -e '.error' > /dev/null 2>&1; then
+            local error_msg
+            error_msg=$(echo "$put_response" | jq -r '.error')
+            add_result "FAIL" "Slack Config PUT" "Error: $error_msg"
+            log_error "  PUT /slack/config failed: $error_msg"
+            return 1
+        else
+            add_result "FAIL" "Slack Config PUT" "Invalid response format"
+            log_error "  PUT /slack/config returned invalid response"
+            return 1
+        fi
+    fi
+
+    # Test configuration persistence
+    log_info "  Step 3/3: Verifying configuration persistence..."
+    sleep 2  # Wait for DynamoDB consistency
+
+    local verify_response
+    verify_response=$(api_request "GET" "/slack/config")
+
+    if echo "$verify_response" | jq -e '.workspace_id' > /dev/null 2>&1; then
+        local persisted_workspace persisted_days
+        persisted_workspace=$(echo "$verify_response" | jq -r '.workspace_id')
+        persisted_days=$(echo "$verify_response" | jq -r '.default_analysis_days')
+
+        if [ "$persisted_workspace" = "test-workspace" ] && [ "$persisted_days" -eq 14 ]; then
+            add_result "PASS" "Slack Config Persistence" "Configuration persisted correctly"
+            log_success "  Configuration persistence verified"
+        else
+            add_result "FAIL" "Slack Config Persistence" "Configuration not persisted correctly"
+            log_error "  Configuration persistence failed"
+            return 1
+        fi
+    else
+        add_result "FAIL" "Slack Config Persistence" "Cannot verify persistence"
+        log_error "  Failed to verify configuration persistence"
+        return 1
+    fi
+
+    # Restore default configuration
+    log_info "  Restoring default configuration..."
+    local restore_data='{"workspace_id": "default", "workspace_name": "", "default_analysis_days": 30}'
+    api_request "PUT" "/slack/config" "$restore_data" > /dev/null 2>&1
+    log_info "  Configuration restored to defaults"
+}
+
+# Test 28: Slack Integration Comprehensive Test
 test_slack_integration_comprehensive() {
     log_info "Testing Slack integration end-to-end..."
     log_info "This test validates the complete Slack analysis workflow"
@@ -1537,6 +1651,7 @@ main() {
         log_info "Running Slack integration tests only..."
         echo ""
 
+        test_slack_config_endpoints || true
         test_slack_user_analysis || true
         test_slack_get_user_profile || true
         test_slack_list_users || true
@@ -1599,6 +1714,7 @@ main() {
 
         # Slack Integration tests
         log_info "Running Slack integration tests..."
+        test_slack_config_endpoints || true
         test_slack_user_analysis || true
         test_slack_get_user_profile || true
         test_slack_list_users || true

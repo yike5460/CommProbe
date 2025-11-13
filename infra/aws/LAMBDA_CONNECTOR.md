@@ -202,6 +202,197 @@ The Slack Collector Lambda analyzes Slack workspace data for internal team insig
   - TTL: 180 days (auto-cleanup)
   - GSI: `WorkspaceIndex` for workspace-wide queries
 
+### 6. **Dynamic Bot Token Configuration** (Phase 1.7)
+- Bot token can be configured dynamically via `/slack/config` API endpoint
+- Configuration stored in DynamoDB `supio-system-config` table
+- Lambda checks config table first, falls back to environment variable
+- Enables runtime configuration without Lambda redeployment
+
+**Bot Token Resolution Order:**
+1. Check environment variable `SLACK_BOT_TOKEN`
+2. If not set or "DISABLED", query config table with key `config_id='slack_settings'`
+3. If config exists and has `bot_token`, use it
+4. If no token found, return "Slack integration disabled" error
+
+**Implementation** (`lambda/collector/slack/index.py`):
+```python
+# Try to get bot token from config table first
+bot_token = SLACK_BOT_TOKEN
+config_table_name = os.environ.get('CONFIG_TABLE_NAME', '')
+
+if (not bot_token or bot_token == 'DISABLED') and config_table_name:
+    try:
+        dynamodb_resource = boto3.resource('dynamodb')
+        config_table = dynamodb_resource.Table(config_table_name)
+        response = config_table.get_item(Key={'config_id': 'slack_settings'})
+
+        if 'Item' in response and response['Item'].get('bot_token'):
+            bot_token = response['Item']['bot_token']
+            logger.info("Using bot token from configuration table")
+    except Exception as e:
+        logger.warning(f"Could not load bot token from config table: {str(e)}")
+```
+
+## Phase 1 Revisions: Activity-Focused Analysis
+
+### AI Prompt Changes (Phase 1.1-1.3)
+
+The Slack integration AI prompts were revised to shift from **product management focus** to **personal activity and team engagement focus**.
+
+#### User Analysis Prompts (Phase 1.1)
+**File:** `lambda/collector/slack/bedrock_client.py` - `analyze_user_content()` method
+
+**OLD Focus** (Product Manager):
+- Core interests for product alignment
+- Key opinions on product topics
+- Expertise for team planning
+- Product-related pain points
+
+**NEW Focus** (Personal Activity):
+- Daily/weekly activity summary
+- Personal interests and hobbies
+- Learning and growth areas
+- Team collaboration patterns
+- Current projects and responsibilities
+- Communication preferences
+
+**Updated Prompt** (Lines 166-179):
+```python
+prompt = f"""Analyze {user_name}'s recent activity in the Slack channel #{channel_name} to provide a personal activity summary.
+
+Content ({len(messages)} messages, {len(replies)} replies):
+{combined_content}
+
+Provide a friendly, personal activity summary:
+1. **Activity Overview**: Summarize their participation level and engagement in this channel
+2. **Topics Discussed**: What topics and subjects did they discuss?
+3. **Personal Interests**: What personal interests or professional passions are evident?
+4. **Collaboration Style**: How do they interact with team members?
+5. **Key Contributions**: What valuable insights or help did they provide?
+6. **Current Focus**: What are they currently working on or thinking about?
+
+Write in a friendly, supportive tone that helps team members understand each other better."""
+```
+
+**Updated System Prompt** (Line 181):
+```python
+system_prompt = "You are a friendly team collaboration assistant helping organization members understand each other's daily activities, interests, and contributions. Focus on personal growth, team dynamics, and mutual understanding rather than product management."
+```
+
+#### Channel Analysis Prompts (Phase 1.2)
+**File:** `lambda/collector/slack/bedrock_client.py` - `analyze_channel_content()` method
+
+**OLD Focus** (Product Insights):
+- Feature requests extraction
+- Product opportunities identification
+- Strategic recommendations
+- Roadmap prioritization
+
+**NEW Focus** (Daily Digest):
+- Daily conversation summary
+- Participation levels and engagement
+- Content highlights and interesting discussions
+- Team collaboration patterns
+- Knowledge sharing moments
+
+**Updated Prompt** (Lines 235-249):
+```python
+prompt = f"""Provide a daily summary of conversations in the Slack channel #{channel_name}.
+
+Messages (sample of {len(sampled_messages)} from {len(all_messages)} total):
+{combined_content}
+
+Provide a conversational daily digest:
+1. **Channel Activity Overview**: Overall participation level and engagement in this period
+2. **Main Discussion Topics**: What were the primary topics discussed?
+3. **Interesting Highlights**: Notable conversations, insights, or memorable moments
+4. **Active Participants**: Who contributed most to discussions?
+5. **Helpful Content**: Useful information, tips, resources, or knowledge shared
+6. **Team Mood**: What's the overall team sentiment and energy level?
+7. **Ongoing Discussions**: Any topics that will continue or action items mentioned?
+
+Write as a friendly daily digest that helps team members catch up on what they missed."""
+```
+
+**Updated System Prompt** (Line 251):
+```python
+system_prompt = "You are a friendly team collaboration assistant creating daily channel summaries. Focus on helping team members stay connected, catch up on discussions, and understand team dynamics. Write in a warm, conversational tone."
+```
+
+#### Overall Insights Generation (Phase 1.3)
+**File:** `lambda/collector/slack/bedrock_client.py` - `generate_overall_insights()` method
+
+**OLD Focus** (Professional Expertise):
+- Cross-channel product focus
+- Professional expertise profile
+- Influence on product decisions
+
+**NEW Focus** (Personal Activity):
+- Daily activity across channels
+- Personal growth and interests
+- Team engagement patterns
+- Work-life balance indicators
+
+**Updated Prompt** (Lines 294-314):
+```python
+prompt = f"""Based on {user_name}'s recent activity across multiple Slack channels, create a friendly personal activity summary.
+
+Activity Summary:
+- Total Channels: {summary_stats.get('total_channels_joined', 0)}
+- Active Channels: {summary_stats.get('active_channels', 0)}
+- Total Messages: {summary_stats.get('total_messages', 0)}
+- Total Replies: {summary_stats.get('total_replies', 0)}
+
+Per-Channel Activities:
+{combined_analyses}
+
+Create a warm, personal activity summary:
+1. **Activity Highlights**: What has {user_name} been up to recently? Summarize their main activities and contributions
+2. **Areas of Interest**: What topics are they passionate about or actively exploring?
+3. **Collaboration Highlights**: How have they helped or collaborated with teammates? Any notable interactions?
+4. **Personal Growth**: What are they learning, exploring, or developing?
+5. **Engagement Pattern**: When and where are they most active? What drives their participation?
+6. **Team Connections**: Who do they interact with most frequently?
+7. **Personal Summary**: Create a friendly 2-3 sentence description that captures their recent vibe, focus, and energy
+
+Write as if you're a friendly colleague helping others understand what {user_name} is up to."""
+```
+
+### Data Model Enhancements (Phase 1.4-1.5)
+
+**File:** `lambda/collector/slack/models.py`
+
+**New User Profile Fields** (Phase 1.4):
+```python
+engagement_score: Optional[float] = None  # Calculated: activity / time_period
+activity_trend: Optional[Literal['increasing', 'stable', 'decreasing']] = None
+most_active_time: Optional[str] = None  # e.g., "9-11 AM" or "afternoon"
+collaboration_network: Optional[List[dict]] = None  # Top collaborators with counts
+recent_topics: Optional[List[str]] = None  # Topics from last 7 days
+```
+
+**New Channel Summary Fields** (Phase 1.5):
+```python
+daily_digest: Optional[str] = None  # New field for conversational summaries
+highlights: Optional[List[dict]] = None  # Top messages: {author, text, timestamp, reactions}
+participation_rate: Optional[float] = None  # Engagement percentage
+topic_clusters: Optional[List[dict]] = None  # Grouped themes: {topic, count, messages}
+activity_trend: Optional[Literal['up', 'stable', 'down']] = None
+```
+
+**Deprecated Fields** (Kept for backward compatibility):
+```python
+feature_requests: Optional[List[str]] = []  # Product-focused
+pain_points: Optional[List[str]] = []  # Product-focused
+product_opportunities: Optional[List[str]] = []  # Product-focused
+strategic_recommendations: Optional[List[str]] = []  # Product-focused
+```
+
+**TypeScript Type Updates** (`ui/src/types/index.ts`):
+- All new Python fields mirrored in TypeScript interfaces
+- `SlackUserProfile` interface includes activity-focused fields
+- `SlackChannelSummary` interface includes daily digest fields
+
 ## Migration from Prototype
 
 ### What's Preserved from Prototype

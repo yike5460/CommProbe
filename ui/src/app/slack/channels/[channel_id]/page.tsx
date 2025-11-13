@@ -1,6 +1,6 @@
 /**
  * Slack Channel Detail Page
- * Detailed channel analysis with product insights and recommendations
+ * Daily digest with highlights, participation leaderboard, and topic analysis
  */
 
 'use client';
@@ -9,27 +9,37 @@ export const runtime = 'edge';
 
 import { useParams, useRouter } from 'next/navigation';
 import { AppLayout } from '@/components/layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useSlackChannelSummary, useAnalyzeSlackChannel } from '@/hooks/useSlackApi';
 import {
   Hash,
   Lock,
   Users,
   MessageCircle,
-  Tag,
-  Lightbulb,
-  Target,
-  TrendingUp,
-  CheckCircle,
-  AlertCircle,
   Sparkles,
+  AlertCircle,
   Loader2,
   ArrowLeft,
   RefreshCw,
+  TrendingUp,
+  Trophy,
+  Activity,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+} from 'recharts';
 
 export default function ChannelDetailPage() {
   const params = useParams();
@@ -47,27 +57,13 @@ export default function ChannelDetailPage() {
         days: summary.analysis_period_days,
         workspace_id: summary.workspace_id,
       });
-      // Refetch after a delay to allow processing
       setTimeout(() => refetch(), 3000);
     } catch (error) {
       console.error('Failed to trigger reanalysis:', error);
     }
   };
 
-  const getSentimentBadgeVariant = (sentiment: string) => {
-    switch (sentiment) {
-      case 'positive':
-        return 'default';
-      case 'neutral':
-        return 'secondary';
-      case 'negative':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
-  };
-
-  const getContributionBadgeVariant = (level: string) => {
+  const getContributionBadgeVariant = (level: string): 'default' | 'secondary' | 'outline' => {
     switch (level) {
       case 'high':
         return 'default';
@@ -79,6 +75,12 @@ export default function ChannelDetailPage() {
         return 'outline';
     }
   };
+
+  // Prepare topic cluster data for visualization
+  const topicClusterData = summary?.topic_clusters?.map((cluster) => ({
+    topic: cluster.topic,
+    count: cluster.count,
+  })) || [];
 
   if (isLoading) {
     return (
@@ -113,263 +115,258 @@ export default function ChannelDetailPage() {
   return (
     <AppLayout>
       {/* Back Button */}
-      <Button
-        variant="ghost"
-        className="mb-4"
-        onClick={() => router.push('/slack/channels')}
-      >
+      <Button variant="ghost" className="mb-4" onClick={() => router.push('/slack/channels')}>
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Channels
       </Button>
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <Hash className="h-8 w-8 text-muted-foreground" />
-            <h1 className="text-3xl font-bold">{summary.channel_name}</h1>
-            {summary.is_private && <Lock className="h-6 w-6 text-muted-foreground" />}
-            <Badge variant={getSentimentBadgeVariant(summary.sentiment)} className="text-base px-3 py-1">
-              {summary.sentiment}
-            </Badge>
+      {/* Hero Section */}
+      <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-8 text-white mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+              <Hash className="h-8 w-8" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-bold">#{summary.channel_name}</h1>
+                {summary.is_private && <Lock className="h-6 w-6" />}
+              </div>
+              {summary.channel_purpose && (
+                <p className="text-blue-100 mt-1">{summary.channel_purpose}</p>
+              )}
+              <div className="flex gap-4 mt-2">
+                <span className="text-sm">{summary.num_members} members</span>
+                <span className="text-sm">•</span>
+                <span className="text-sm">{summary.messages_analyzed} messages analyzed</span>
+                {summary.participation_rate && (
+                  <>
+                    <span className="text-sm">•</span>
+                    <span className="text-sm">
+                      {(summary.participation_rate * 100).toFixed(0)}% participation
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-          {summary.channel_purpose && (
-            <p className="text-muted-foreground mt-2">{summary.channel_purpose}</p>
+          <Button
+            variant="secondary"
+            onClick={handleReanalyze}
+            disabled={analyzeChannel.isPending}
+          >
+            {analyzeChannel.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Digest
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Today's Highlights */}
+          {summary.highlights && summary.highlights.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-yellow-500" />
+                  Today's Highlights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {summary.highlights.map((highlight, i) => (
+                    <div key={i} className="border-l-4 border-yellow-400 pl-4 py-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-xs bg-purple-100 text-purple-700">
+                            {highlight.author[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs font-medium">{highlight.author}</span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(highlight.timestamp).toLocaleTimeString()}
+                        </span>
+                        {highlight.reactions && (
+                          <>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <span className="text-xs text-muted-foreground">
+                              {highlight.reactions} reactions
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{highlight.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
-          <div className="flex gap-2 mt-2 flex-wrap">
-            <Badge variant="outline">{summary.analysis_period_days}-day analysis</Badge>
-            <Badge variant="outline">
-              Updated {formatDistanceToNow(new Date(summary.last_updated * 1000))} ago
-            </Badge>
-          </div>
+
+          {/* Daily Digest */}
+          {summary.daily_digest && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="h-5 w-5 text-blue-500" />
+                  Daily Digest
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                  {summary.daily_digest}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Conversation Topics */}
+          {summary.key_topics && summary.key_topics.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Conversation Topics</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {summary.key_topics.map((topic, i) => (
+                    <Badge
+                      key={i}
+                      variant="secondary"
+                      className="text-sm px-3 py-1 cursor-pointer hover:bg-purple-100 transition-colors"
+                    >
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Topic Clusters Chart */}
+          {topicClusterData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Topic Distribution</CardTitle>
+                <CardDescription>Message count by discussion topic</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={topicClusterData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="topic" angle={-45} textAnchor="end" height={100} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#6366f1" name="Messages" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
-        <Button
-          onClick={handleReanalyze}
-          disabled={analyzeChannel.isPending}
-        >
-          {analyzeChannel.isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Re-analyze
-            </>
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Participation Leaderboard */}
+          {summary.key_contributors && summary.key_contributors.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-yellow-500" />
+                  Top Contributors
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {summary.key_contributors.slice(0, 5).map((contributor, i) => (
+                    <div key={contributor.user_id} className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100 text-purple-700 font-bold text-sm">
+                        #{i + 1}
+                      </div>
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-gradient-to-br from-purple-400 to-purple-600 text-white">
+                          {contributor.user_name[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm flex-1">{contributor.user_name}</span>
+                      <Badge variant={getContributionBadgeVariant(contributor.contribution_level)}>
+                        {contributor.contribution_level}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </Button>
-      </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Members</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.num_members}</div>
-            <p className="text-xs text-muted-foreground">Total channel members</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Messages</CardTitle>
-            <MessageCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.messages_analyzed}</div>
-            <p className="text-xs text-muted-foreground">Messages analyzed</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Key Topics</CardTitle>
-            <Tag className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.key_topics?.length || 0}</div>
-            <p className="text-xs text-muted-foreground">Main discussion themes</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Feature Requests</CardTitle>
-            <Lightbulb className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.feature_requests?.length || 0}</div>
-            <p className="text-xs text-muted-foreground">Identified requests</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Key Topics */}
-      {summary.key_topics && summary.key_topics.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Key Topics & Themes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {summary.key_topics.map((topic, i) => (
-                <Badge key={i} variant="secondary" className="text-sm">
-                  {topic}
-                </Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Feature Requests */}
-      {summary.feature_requests && summary.feature_requests.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50/50 mb-6">
-          <CardHeader>
-            <CardTitle className="text-orange-800 flex items-center gap-2">
-              <Lightbulb className="h-5 w-5" />
-              Feature Requests
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {summary.feature_requests.map((request, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="font-medium text-orange-700 mt-0.5">{i + 1}.</span>
-                  <span className="text-sm text-foreground">{request}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pain Points */}
-      {summary.pain_points && summary.pain_points.length > 0 && (
-        <Card className="border-red-200 bg-red-50/50 mb-6">
-          <CardHeader>
-            <CardTitle className="text-red-800 flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Pain Points
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {summary.pain_points.map((pain, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="font-medium text-red-700 mt-0.5">{i + 1}.</span>
-                  <span className="text-sm text-foreground">{pain}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Product Opportunities */}
-      {summary.product_opportunities && summary.product_opportunities.length > 0 && (
-        <Card className="border-green-200 bg-green-50/50 mb-6">
-          <CardHeader>
-            <CardTitle className="text-green-800 flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Product Opportunities
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {summary.product_opportunities.map((opportunity, i) => (
-                <div key={i} className="bg-white p-3 rounded border border-green-200">
-                  <p className="text-sm text-foreground">{opportunity}</p>
+          {/* Channel Statistics */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Channel Statistics</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Messages analyzed</span>
+                <span className="font-semibold">{summary.messages_analyzed}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Active members</span>
+                <span className="font-semibold">{summary.num_members}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Analysis period</span>
+                <span className="font-semibold">{summary.analysis_period_days} days</span>
+              </div>
+              {summary.participation_rate && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Participation rate</span>
+                  <span className="font-semibold">
+                    {(summary.participation_rate * 100).toFixed(0)}%
+                  </span>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Strategic Recommendations */}
-      {summary.strategic_recommendations && summary.strategic_recommendations.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50/50 mb-6">
-          <CardHeader>
-            <CardTitle className="text-blue-800 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Strategic Recommendations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {summary.strategic_recommendations.map((rec, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <CheckCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-foreground">{rec}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Key Contributors */}
-      {summary.key_contributors && summary.key_contributors.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Key Contributors</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {summary.key_contributors.map((contributor) => (
-                <div
-                  key={contributor.user_id}
-                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent transition-colors"
-                >
-                  <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                    <span className="text-sm font-semibold text-purple-700">
-                      {contributor.user_name[0]?.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{contributor.user_name}</p>
-                    <Badge variant={getContributionBadgeVariant(contributor.contribution_level)} className="mt-1">
-                      {contributor.contribution_level}
-                    </Badge>
-                  </div>
+              )}
+              {summary.activity_trend && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Activity trend</span>
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <Activity className="h-3 w-3" />
+                    {summary.activity_trend}
+                  </Badge>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              )}
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Last updated</span>
+                <span className="font-semibold text-xs">
+                  {formatDistanceToNow(new Date(summary.last_updated * 1000), { addSuffix: true })}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Full AI Summary */}
-      {summary.ai_summary && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-500" />
-              AI-Generated Channel Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="prose prose-sm max-w-none">
-              <p className="text-foreground leading-relaxed whitespace-pre-line">
-                {summary.ai_summary}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Metadata Footer */}
-      <div className="text-sm text-muted-foreground text-center py-4 border-t">
-        Analysis Date: {new Date(summary.analysis_date).toLocaleDateString()} •
-        Analysis Period: {summary.analysis_period_days} days •
-        Messages Analyzed: {summary.messages_analyzed.toLocaleString()} •
-        AI Tokens Used: {summary.ai_tokens_used.toLocaleString()}
+          {/* AI Summary */}
+          {summary.ai_summary && (
+            <Card>
+              <CardHeader>
+                <CardTitle>AI Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                  {summary.ai_summary}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </AppLayout>
   );

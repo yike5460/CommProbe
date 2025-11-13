@@ -42,6 +42,12 @@ class SlackUserProfile(BaseModel):
     ai_persona_summary: str
     ai_tokens_used: int
     last_updated: int
+    # New activity-focused fields
+    engagement_score: Optional[float] = None  # Calculated: activity / time_period
+    activity_trend: Optional[Literal['increasing', 'stable', 'decreasing']] = None
+    most_active_time: Optional[str] = None  # e.g., "9-11 AM" or "afternoon"
+    collaboration_network: Optional[List[dict]] = None  # Top collaborators with counts
+    recent_topics: Optional[List[str]] = None  # Topics from last 7 days
     ttl: Optional[int] = None  # TTL for DynamoDB
 
 
@@ -64,15 +70,23 @@ class SlackChannelSummary(BaseModel):
     messages_analyzed: int
     channel_purpose: str
     key_topics: List[str]
-    feature_requests: List[str]
-    pain_points: List[str]
+    # Deprecated product-focused fields (kept for backward compatibility)
+    feature_requests: Optional[List[str]] = []
+    pain_points: Optional[List[str]] = []
+    product_opportunities: Optional[List[str]] = []
+    strategic_recommendations: Optional[List[str]] = []
+    # Core fields
     sentiment: Literal['positive', 'neutral', 'negative']
     key_contributors: List[KeyContributor]
-    product_opportunities: List[str]
-    strategic_recommendations: List[str]
-    ai_summary: str
+    ai_summary: str  # Will become daily_digest in future versions
     ai_tokens_used: int
     last_updated: int
+    # New activity-focused fields
+    daily_digest: Optional[str] = None  # New field for conversational summaries
+    highlights: Optional[List[dict]] = None  # Top messages: {author, text, timestamp, reactions}
+    participation_rate: Optional[float] = None  # Engagement percentage
+    topic_clusters: Optional[List[dict]] = None  # Grouped themes: {topic, count, messages}
+    activity_trend: Optional[Literal['up', 'stable', 'down']] = None
     ttl: Optional[int] = None  # TTL for DynamoDB
 
 

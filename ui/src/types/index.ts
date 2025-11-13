@@ -304,6 +304,12 @@ export interface SlackUserProfile {
   ai_persona_summary: string;
   ai_tokens_used: number;
   last_updated: number;
+  // New activity-focused fields
+  engagement_score?: number;  // Calculated: activity / time_period
+  activity_trend?: 'increasing' | 'stable' | 'decreasing';
+  most_active_time?: string;  // e.g., "9-11 AM" or "afternoon"
+  collaboration_network?: Array<{user_id: string; user_name: string; interaction_count: number}>;
+  recent_topics?: string[];  // Topics from last 7 days
 }
 
 export interface ChannelActivity {
@@ -326,15 +332,23 @@ export interface SlackChannelSummary {
   messages_analyzed: number;
   channel_purpose: string;
   key_topics: string[];
-  feature_requests: string[];
-  pain_points: string[];
+  // Deprecated product-focused fields (kept for backward compatibility)
+  feature_requests?: string[];
+  pain_points?: string[];
+  product_opportunities?: string[];
+  strategic_recommendations?: string[];
+  // Core fields
   sentiment: 'positive' | 'neutral' | 'negative';
   key_contributors: KeyContributor[];
-  product_opportunities: string[];
-  strategic_recommendations: string[];
-  ai_summary: string;
+  ai_summary: string;  // Legacy field, use daily_digest for new data
   ai_tokens_used: number;
   last_updated: number;
+  // New activity-focused fields
+  daily_digest?: string;  // New conversational summary field
+  highlights?: Array<{author: string; text: string; timestamp: string; reactions?: number}>;
+  participation_rate?: number;  // Engagement percentage
+  topic_clusters?: Array<{topic: string; count: number; message_ids: string[]}>;
+  activity_trend?: 'up' | 'stable' | 'down';
 }
 
 export interface KeyContributor {
@@ -389,6 +403,35 @@ export interface SlackChannelListResponse {
   channels: SlackChannelSummary[];
   count: number;
   workspace_id: string;
+}
+
+// Slack Configuration Types
+export interface SlackConfigResponse {
+  workspace_id: string;
+  bot_token_masked: string;
+  bot_token_configured: boolean;
+  default_analysis_days: number;
+  workspace_name: string;
+  last_updated: number;
+}
+
+export interface SlackConfigUpdate {
+  bot_token?: string;
+  workspace_id?: string;
+  workspace_name?: string;
+  default_analysis_days?: number;
+}
+
+export interface SlackConfigUpdateResponse {
+  message: string;
+  config: {
+    config_id: string;
+    last_updated: number;
+    workspace_id: string;
+    workspace_name: string;
+    default_analysis_days: number;
+    bot_token_configured: boolean;
+  };
 }
 
 // Configuration Types

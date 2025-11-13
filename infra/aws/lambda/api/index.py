@@ -154,6 +154,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return handle_slack_list_channels(event, headers)
         elif http_method == 'GET' and path.startswith('/slack/jobs/') and path.endswith('/status'):
             return handle_slack_get_job_status(event, headers)
+        elif http_method == 'GET' and path == '/slack/config':
+            return handle_slack_get_config(event, headers)
+        elif http_method == 'PUT' and path == '/slack/config':
+            return handle_slack_update_config(event, headers)
         elif http_method == 'GET' and path == '/':
             return handle_api_documentation(headers)
         else:
@@ -1705,6 +1709,78 @@ def handle_slack_get_job_status(event: Dict[str, Any], headers: Dict[str, str]) 
     except Exception as e:
         print(f"Error getting job status: {str(e)}")
         return create_response(500, {'error': 'Failed to get job status', 'message': str(e)}, headers)
+
+
+def handle_slack_get_config(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle GET /slack/config - Get Slack configuration"""
+    try:
+        config_table_name = os.environ.get('CONFIG_TABLE_NAME')
+        if not config_table_name:
+            return create_response(500, {'error': 'Config table not configured'}, headers)
+
+        config_table = dynamodb.Table(config_table_name)
+        response = config_table.get_item(Key={'config_id': 'slack_settings'})
+
+        config = response.get('Item', {})
+
+        # Mask the bot token for security (show only last 4 chars)
+        bot_token = config.get('bot_token', '')
+        masked_token = f"xoxb-***{bot_token[-4:]}" if bot_token else 'Not configured'
+
+        return create_response(200, {
+            'workspace_id': config.get('workspace_id', 'default'),
+            'bot_token_masked': masked_token,
+            'bot_token_configured': bool(bot_token),
+            'default_analysis_days': config.get('default_analysis_days', 30),
+            'workspace_name': config.get('workspace_name', ''),
+            'last_updated': config.get('last_updated', 0)
+        }, headers)
+
+    except Exception as e:
+        print(f"Error getting Slack config: {str(e)}")
+        return create_response(500, {'error': 'Failed to get Slack configuration', 'message': str(e)}, headers)
+
+
+def handle_slack_update_config(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Handle PUT /slack/config - Update Slack configuration"""
+    try:
+        body = json.loads(event.get('body', '{}'))
+
+        config_table_name = os.environ.get('CONFIG_TABLE_NAME')
+        if not config_table_name:
+            return create_response(500, {'error': 'Config table not configured'}, headers)
+
+        config_table = dynamodb.Table(config_table_name)
+
+        config_item = {
+            'config_id': 'slack_settings',
+            'last_updated': int(time.time())
+        }
+
+        # Only update fields that are provided
+        if 'bot_token' in body and body['bot_token']:
+            config_item['bot_token'] = body['bot_token']
+        if 'workspace_id' in body:
+            config_item['workspace_id'] = body['workspace_id']
+        if 'workspace_name' in body:
+            config_item['workspace_name'] = body['workspace_name']
+        if 'default_analysis_days' in body:
+            config_item['default_analysis_days'] = int(body['default_analysis_days'])
+
+        config_table.put_item(Item=config_item)
+
+        # Return config without exposing bot token
+        response_config = {k: v for k, v in config_item.items() if k != 'bot_token'}
+        response_config['bot_token_configured'] = 'bot_token' in config_item
+
+        return create_response(200, {
+            'message': 'Configuration updated successfully',
+            'config': response_config
+        }, headers)
+
+    except Exception as e:
+        print(f"Error updating Slack config: {str(e)}")
+        return create_response(500, {'error': 'Failed to update Slack configuration', 'message': str(e)}, headers)
 
 
 def create_response(status_code: int, body: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:

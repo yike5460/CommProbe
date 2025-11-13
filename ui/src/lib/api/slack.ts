@@ -12,6 +12,10 @@ import {
   SlackChannelSummary,
   SlackUserListResponse,
   SlackChannelListResponse,
+  SlackConfigResponse,
+  SlackConfigUpdate,
+  SlackConfigUpdateResponse,
+  SlackJobStatus,
 } from '@/types';
 import { SupioApiError } from '@/services/api';
 
@@ -163,6 +167,45 @@ export class SlackApiService {
    */
   async getJobStatus(jobId: string): Promise<SlackJobStatus> {
     return this.request(`/jobs/${encodeURIComponent(jobId)}/status`);
+  }
+
+  // ================================
+  // Configuration Endpoints
+  // ================================
+
+  /**
+   * GET /slack/config - Get Slack configuration
+   */
+  async getSlackConfig(): Promise<SlackConfigResponse> {
+    return this.request('/config');
+  }
+
+  /**
+   * PUT /slack/config - Update Slack configuration
+   */
+  async updateSlackConfig(config: SlackConfigUpdate): Promise<SlackConfigUpdateResponse> {
+    return this.request('/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  }
+
+  /**
+   * Test Slack connection (trigger a simple user list to verify token)
+   */
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    try {
+      await this.listUsers('default', 1);
+      return {
+        success: true,
+        message: 'Connection successful',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof SupioApiError ? error.message : 'Connection failed',
+      };
+    }
   }
 
   // ================================

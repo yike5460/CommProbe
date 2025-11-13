@@ -1,6 +1,6 @@
 /**
  * SlackChannelCard Component
- * Displays a Slack channel summary card
+ * Displays a Slack channel summary card with daily digest focus
  */
 
 'use client';
@@ -9,7 +9,8 @@ import { SlackChannelSummary } from '@/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Hash, Lock, Lightbulb, Target } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Hash, Lock, Sparkles, Activity } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface SlackChannelCardProps {
@@ -28,112 +29,100 @@ export function SlackChannelCard({ channel, onViewDetails }: SlackChannelCardPro
     }
   };
 
-  const getSentimentBadgeVariant = (sentiment: string) => {
-    switch (sentiment) {
-      case 'positive':
-        return 'default'; // green/success color
-      case 'neutral':
-        return 'secondary';
-      case 'negative':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
+  const getActivityLevel = (messages: number, days: number): string => {
+    const messagesPerDay = messages / days;
+    if (messagesPerDay >= 10) return 'Very Active';
+    if (messagesPerDay >= 3) return 'Active';
+    return 'Low Activity';
   };
 
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'positive':
-        return 'text-green-600';
-      case 'neutral':
-        return 'text-gray-600';
-      case 'negative':
-        return 'text-red-600';
-      default:
-        return 'text-gray-600';
-    }
+  const extractHighlights = (summary: string): string => {
+    // Extract first meaningful sentence from AI summary
+    const sentences = summary?.split('.') || [];
+    return sentences[0] ? sentences[0] + '.' : 'No highlights available yet';
   };
 
   return (
-    <Card className="hover:shadow-lg transition-shadow h-full flex flex-col">
+    <Card className="group hover:shadow-xl transition-all duration-300 h-full flex flex-col">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Hash className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-            <h3 className="font-semibold text-lg truncate">{channel.channel_name}</h3>
-            {channel.is_private && (
-              <Lock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            )}
+          <div className="flex items-center gap-2 flex-1">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+              <Hash className="h-6 w-6 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-lg truncate">{channel.channel_name}</h3>
+                {channel.is_private && <Lock className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {channel.messages_analyzed} messages • {channel.num_members} members
+              </p>
+            </div>
           </div>
-          <Badge variant={getSentimentBadgeVariant(channel.sentiment)}>
-            {channel.sentiment}
+
+          {/* Activity Level */}
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Activity className="h-3 w-3" />
+            {getActivityLevel(channel.messages_analyzed, channel.analysis_period_days)}
           </Badge>
         </div>
-        {channel.channel_purpose && (
-          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-            {channel.channel_purpose}
-          </p>
-        )}
       </CardHeader>
 
       <CardContent className="space-y-4 flex-1 flex flex-col">
-        {/* Metrics */}
-        <div className="flex justify-around text-center">
-          <div>
-            <p className="text-xl font-bold">{channel.num_members}</p>
-            <p className="text-xs text-muted-foreground">Members</p>
-          </div>
-          <div>
-            <p className="text-xl font-bold">{channel.messages_analyzed}</p>
-            <p className="text-xs text-muted-foreground">Messages</p>
-          </div>
-          <div>
-            <p className="text-xl font-bold">{channel.key_topics?.length || 0}</p>
-            <p className="text-xs text-muted-foreground">Topics</p>
-          </div>
+        {/* Today's Highlights */}
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-lg">
+          <p className="text-xs font-medium text-blue-900 mb-1 flex items-center gap-1">
+            <Sparkles className="h-3 w-3" />
+            Today's Highlights
+          </p>
+          <p className="text-sm text-blue-800 line-clamp-2">
+            {channel.daily_digest || extractHighlights(channel.ai_summary)}
+          </p>
         </div>
 
-        {/* Key Topics */}
+        {/* Main Topics (Bubbles) */}
         {channel.key_topics && channel.key_topics.length > 0 && (
-          <div className="flex-1">
-            <p className="text-sm font-medium mb-2">Key Topics</p>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Main topics:</p>
             <div className="flex flex-wrap gap-1">
               {channel.key_topics.slice(0, 4).map((topic, i) => (
                 <Badge key={i} variant="secondary" className="text-xs">
                   {topic}
                 </Badge>
               ))}
-              {channel.key_topics.length > 4 && (
-                <Badge variant="secondary" className="text-xs">
-                  +{channel.key_topics.length - 4}
-                </Badge>
+            </div>
+          </div>
+        )}
+
+        {/* Active Participants */}
+        {channel.key_contributors && channel.key_contributors.length > 0 && (
+          <div className="flex-1">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Active participants:</p>
+            <div className="flex -space-x-2">
+              {channel.key_contributors.slice(0, 5).map((contributor) => (
+                <Avatar key={contributor.user_id} className="h-8 w-8 border-2 border-white">
+                  <AvatarFallback className="text-xs bg-gradient-to-br from-purple-400 to-purple-600 text-white">
+                    {contributor.user_name[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              ))}
+              {channel.key_contributors.length > 5 && (
+                <div className="h-8 w-8 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center">
+                  <span className="text-xs text-gray-600">+{channel.key_contributors.length - 5}</span>
+                </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Feature Requests Count */}
-        {channel.feature_requests && channel.feature_requests.length > 0 && (
-          <div className="flex items-center gap-2 text-sm text-orange-700 bg-orange-50 p-2 rounded">
-            <Lightbulb className="h-4 w-4 flex-shrink-0" />
-            <span>{channel.feature_requests.length} feature request(s) identified</span>
-          </div>
-        )}
-
-        {/* Product Opportunities Count */}
-        {channel.product_opportunities && channel.product_opportunities.length > 0 && (
-          <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-2 rounded">
-            <Target className="h-4 w-4 flex-shrink-0" />
-            <span>{channel.product_opportunities.length} product opportunity(ies)</span>
-          </div>
-        )}
-
+        {/* Action Button */}
         <Button
-          variant="outline"
-          className="w-full mt-auto"
+          variant="ghost"
+          className="w-full mt-auto group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors"
           onClick={handleClick}
         >
-          View Full Analysis
+          Read Full Digest →
         </Button>
       </CardContent>
     </Card>

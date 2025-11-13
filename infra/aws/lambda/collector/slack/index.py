@@ -69,8 +69,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         dynamodb_resource = boto3.resource('dynamodb')
         jobs_table = dynamodb_resource.Table(SLACK_JOBS_TABLE)
 
+    # Try to get bot token from config table first, fallback to environment variable
+    bot_token = SLACK_BOT_TOKEN
+    config_table_name = os.environ.get('CONFIG_TABLE_NAME', '')
+
+    if (not bot_token or bot_token == 'DISABLED') and config_table_name:
+        try:
+            dynamodb_resource = boto3.resource('dynamodb')
+            config_table = dynamodb_resource.Table(config_table_name)
+            response = config_table.get_item(Key={'config_id': 'slack_settings'})
+
+            if 'Item' in response and response['Item'].get('bot_token'):
+                bot_token = response['Item']['bot_token']
+                logger.info("Using bot token from configuration table")
+        except Exception as e:
+            logger.warning(f"Could not load bot token from config table: {str(e)}")
+
     # Check if Slack is disabled
-    if SLACK_BOT_TOKEN == 'DISABLED' or not SLACK_BOT_TOKEN:
+    if bot_token == 'DISABLED' or not bot_token:
         logger.warning("Slack integration disabled - SLACK_BOT_TOKEN not configured")
         if job_id and jobs_table:
             update_job_status(jobs_table, job_id, 'failed', error='Slack not configured')
@@ -88,7 +104,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         lambda_input = LambdaInput(**event)
 
         # Initialize clients
-        slack_analyzer = SlackAnalyzer(token=SLACK_BOT_TOKEN, api_delay=1.0)
+        slack_analyzer = SlackAnalyzer(token=bot_token, api_delay=1.0)
         ai_analyzer = BedrockContentAnalyzer(region_name=AWS_BEDROCK_REGION, model_id=MODEL_ID)
         storage = DataStorage(bucket_name=BUCKET_NAME, table_name=SLACK_PROFILES_TABLE)
 

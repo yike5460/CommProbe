@@ -773,6 +773,97 @@ Get detailed execution logs for debugging, troubleshooting, and operational visi
 
 The API provides endpoints for analyzing Slack workspace data to gain insights into internal team communication, user engagement, and channel activity. These endpoints enable **internal team analytics** separate from external community insights (Reddit/Twitter).
 
+### Slack Configuration Endpoints
+
+Before using Slack integration, you must configure the Slack bot token and workspace settings.
+
+### 14A. GET /slack/config - Get Slack Configuration
+
+Retrieve current Slack workspace configuration including bot token status and default settings.
+
+**Response:** `200 OK`
+```json
+{
+  "workspace_id": "default",
+  "bot_token_masked": "xoxb-***4a2f",
+  "bot_token_configured": true,
+  "default_analysis_days": 30,
+  "workspace_name": "Supio AI",
+  "last_updated": 1762998699
+}
+```
+
+**Response Fields:**
+- `workspace_id`: Workspace identifier (default: "default")
+- `bot_token_masked`: Masked bot token showing only last 4 characters (for security)
+- `bot_token_configured`: Boolean indicating if bot token is configured
+- `default_analysis_days`: Default number of days for analysis (7-90)
+- `workspace_name`: Human-readable workspace name
+- `last_updated`: Unix timestamp of last configuration update
+
+**Security Note:** The bot token is never exposed in full. Only the last 4 characters are shown, or "Not configured" if no token is set.
+
+### 14B. PUT /slack/config - Update Slack Configuration
+
+Update Slack workspace configuration including bot token, workspace ID, and default settings.
+
+**Request Body:**
+```json
+{
+  "bot_token": "xoxb-your-slack-bot-token-here",
+  "workspace_id": "T123456789",
+  "workspace_name": "Supio AI",
+  "default_analysis_days": 30
+}
+```
+
+**Parameters:**
+- `bot_token` (optional): Slack Bot User OAuth Token (starts with `xoxb-`)
+- `workspace_id` (optional): Slack workspace ID (default: "default")
+- `workspace_name` (optional): Human-readable workspace name
+- `default_analysis_days` (optional): Default analysis period in days (7-90, default: 30)
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Configuration updated successfully",
+  "config": {
+    "config_id": "slack_settings",
+    "last_updated": 1762998699,
+    "workspace_id": "T123456789",
+    "workspace_name": "Supio AI",
+    "default_analysis_days": 30,
+    "bot_token_configured": true
+  }
+}
+```
+
+**Security Notes:**
+- Bot token is stored encrypted in DynamoDB `supio-system-config` table
+- Token is never returned in API responses for security
+- Only `bot_token_configured` boolean status is returned
+- Configuration is workspace-specific and persists across Lambda invocations
+
+**How to Get Slack Bot Token:**
+1. Go to [api.slack.com/apps](https://api.slack.com/apps)
+2. Select your app or create a new one
+3. Navigate to "OAuth & Permissions"
+4. Copy the "Bot User OAuth Token" (starts with `xoxb-`)
+5. Required scopes: `channels:history`, `channels:read`, `groups:history`, `groups:read`, `users:read`, `users:read.email`, `chat:write`
+
+**Bot Token Configuration Workflow:**
+```
+Frontend Settings Page
+    ↓
+PUT /slack/config (with bot_token)
+    ↓
+Stored in DynamoDB (encrypted)
+    ↓
+Collector Lambda reads from config table
+    ↓
+Bot token used for Slack API calls
+```
+
 ### 15. POST /slack/analyze/user - Trigger Slack User Analysis
 
 Analyze a Slack user's interests, opinions, expertise areas, and engagement patterns across channels.
@@ -859,6 +950,26 @@ Get detailed profile and analysis for a specific Slack user.
     "Slow customer feedback loops"
   ],
   "influence_level": "high",
+  "engagement_score": 14.37,
+  "activity_trend": "increasing",
+  "most_active_time": "9-11 AM",
+  "collaboration_network": [
+    {
+      "user_id": "U987654321",
+      "user_name": "jane.smith",
+      "interaction_count": 45
+    },
+    {
+      "user_id": "U456789012",
+      "user_name": "bob.jones",
+      "interaction_count": 32
+    }
+  ],
+  "recent_topics": [
+    "AI feature development",
+    "Medical records automation",
+    "Customer feedback integration"
+  ],
   "channel_breakdown": [
     {
       "channel_id": "C123456",
@@ -866,15 +977,24 @@ Get detailed profile and analysis for a specific Slack user.
       "message_count": 145,
       "reply_count": 42,
       "last_activity": "2025-01-15T10:30:00Z",
-      "ai_summary": "Leads discussions on AI feature roadmap and medical records automation"
+      "ai_summary": "Actively discussing AI feature roadmap, medical records automation, and team collaboration strategies"
     }
   ],
-  "ai_insights": "John is a highly engaged technical leader...",
-  "ai_persona_summary": "Technical Product Leader with AI/ML focus...",
+  "ai_insights": "John is a highly engaged technical leader focused on AI-powered automation. Active in morning hours (9-11 AM) with strong collaboration patterns across engineering and product teams. Primary focus on medical records processing and incremental feature development.",
+  "ai_persona_summary": "Technical Product Leader with AI/ML focus. Advocates for data-driven decision making and incremental releases. Strong collaborator with engineering and product teams.",
   "ai_tokens_used": 12500,
   "last_updated": 1705420800
 }
 ```
+
+**New Activity-Focused Fields** (Added in Phase 1.4):
+- `engagement_score`: Activity level normalized by time period (messages+replies / days)
+- `activity_trend`: Trend direction - "increasing", "stable", or "decreasing"
+- `most_active_time`: Time period when user is most active (e.g., "9-11 AM", "afternoon")
+- `collaboration_network`: Top collaborators with interaction counts
+- `recent_topics`: Topics discussed in last 7 days
+
+**Note:** AI summaries now focus on **personal activity and team engagement** rather than product management insights (updated in Phase 1.1).
 
 **Error Response (404):**
 ```json
@@ -1011,11 +1131,52 @@ Get detailed analysis and insights for a specific Slack channel.
     "Survey team on mobile app requirements",
     "Evaluate CaseManagement Pro integration ROI"
   ],
-  "ai_summary": "The product-feedback channel shows strong engagement...",
+  "ai_summary": "The product-feedback channel shows strong engagement with team members actively discussing feature improvements, automation opportunities, and integration needs. Daily conversations focus on user pain points and collaborative problem-solving.",
+  "daily_digest": "Today's discussions centered on medical records automation and batch processing features. Team members shared insights on UI improvements and discussed integration priorities. Active participation from product and engineering teams with collaborative brainstorming on mobile app requirements.",
+  "highlights": [
+    {
+      "author": "jane.product",
+      "text": "The batch processing feature would save attorneys 10+ hours per week",
+      "timestamp": "2025-01-16T14:30:00Z",
+      "reactions": 12
+    },
+    {
+      "author": "bob.eng",
+      "text": "I've prototyped the mobile app UI - sharing screenshots in thread",
+      "timestamp": "2025-01-16T10:15:00Z",
+      "reactions": 8
+    }
+  ],
+  "participation_rate": 0.72,
+  "topic_clusters": [
+    {
+      "topic": "Batch Processing",
+      "count": 23,
+      "message_ids": ["msg_001", "msg_045", "msg_089"]
+    },
+    {
+      "topic": "Mobile Development",
+      "count": 18,
+      "message_ids": ["msg_012", "msg_067"]
+    }
+  ],
+  "activity_trend": "up",
   "ai_tokens_used": 15200,
   "last_updated": 1705420800
 }
 ```
+
+**New Activity-Focused Fields** (Added in Phase 1.5):
+- `daily_digest`: Conversational daily summary focusing on team engagement (new field, complements `ai_summary`)
+- `highlights`: Top messages with author, text, timestamp, and reaction counts
+- `participation_rate`: Engagement percentage (0.0-1.0)
+- `topic_clusters`: Grouped discussion themes with message counts
+- `activity_trend`: Activity direction - "up", "stable", or "down"
+
+**Deprecated Fields** (Kept for backward compatibility):
+- `feature_requests`, `product_opportunities`, `strategic_recommendations` - These remain available but new implementations should use the activity-focused fields above
+
+**Note:** AI summaries now focus on **daily conversation highlights and team collaboration** rather than product management insights (updated in Phase 1.2). The `daily_digest` field provides a friendly, conversational summary suitable for team digests.
 
 **Error Response (404):**
 ```json
