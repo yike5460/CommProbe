@@ -40,6 +40,12 @@ import {
   AreaChart,
   Area,
   CartesianGrid,
+  Cell,
+  Legend,
+  PieChart,
+  Pie,
+  ComposedChart,
+  Line,
 } from 'recharts';
 
 // Helper function to render markdown text with proper formatting
@@ -199,12 +205,28 @@ export default function UserProfileDetailPage() {
     }
   };
 
-  // Prepare activity timeline data
-  const activityTimelineData = profile?.channel_breakdown?.map((ch) => ({
-    name: ch.channel_name.length > 15 ? ch.channel_name.substring(0, 15) + '...' : ch.channel_name,
-    messages: ch.message_count,
-    replies: ch.reply_count,
-  })) || [];
+  // Prepare activity timeline data - sorted by total activity
+  const activityTimelineData = profile?.channel_breakdown
+    ?.map((ch) => ({
+      name: ch.channel_name.length > 15 ? ch.channel_name.substring(0, 15) + '...' : ch.channel_name,
+      fullName: ch.channel_name,
+      messages: ch.message_count,
+      replies: ch.reply_count,
+      total: ch.message_count + ch.reply_count,
+    }))
+    .sort((a, b) => b.total - a.total) || [];
+
+  // Prepare channel participation data with percentages
+  const totalActivity = profile?.total_activity || 1;
+  const channelParticipationData = profile?.channel_breakdown
+    ?.map((ch) => ({
+      channel_name: ch.channel_name,
+      message_count: ch.message_count,
+      reply_count: ch.reply_count,
+      total: ch.message_count + ch.reply_count,
+      percentage: ((ch.message_count + ch.reply_count) / totalActivity) * 100,
+    }))
+    .sort((a, b) => b.total - a.total) || [];
 
   if (isLoading) {
     return (
@@ -261,27 +283,35 @@ export default function UserProfileDetailPage() {
                   Most active: {profile.most_active_time}
                 </p>
               )}
-              <div className="flex gap-4 mt-3">
+              <div className="flex gap-6 mt-3">
                 <div>
-                  <p className="text-xl font-bold">{profile.total_activity}</p>
-                  <p className="text-xs text-muted-foreground">Total Activity</p>
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-indigo-600" />
+                    <p className="text-xl font-bold">{profile.total_messages}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Messages</p>
                 </div>
                 <div>
-                  <p className="text-xl font-bold">{profile.active_channels}</p>
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-purple-600" />
+                    <p className="text-xl font-bold">{profile.total_replies}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Replies</p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Hash className="h-4 w-4 text-pink-600" />
+                    <p className="text-xl font-bold">{profile.active_channels}</p>
+                  </div>
                   <p className="text-xs text-muted-foreground">Active Channels</p>
                 </div>
-                <div>
-                  <p className="text-xl font-bold">
-                    {profile.engagement_score?.toFixed(1) || '0.0'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Engagement</p>
-                </div>
-                {profile.activity_trend && (
+                {profile.collaboration_network && profile.collaboration_network.length > 0 && (
                   <div>
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3" />
-                      {profile.activity_trend}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-cyan-600" />
+                      <p className="text-xl font-bold">{profile.collaboration_network.length}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Collaborators</p>
                   </div>
                 )}
               </div>
@@ -330,91 +360,280 @@ export default function UserProfileDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Activity Charts */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Activity Timeline Chart */}
+          {/* Activity Distribution - Combined View */}
           {activityTimelineData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Activity Timeline</CardTitle>
-                <CardDescription>Message and reply activity by channel</CardDescription>
+                <CardTitle>Activity Distribution</CardTitle>
+                <CardDescription>
+                  Message and reply distribution across {activityTimelineData.length} active channels
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={activityTimelineData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fontSize: 12 }}
-                      stroke="#9ca3af"
-                    />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '0.5rem',
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="messages"
-                      stackId="1"
-                      stroke="#6366f1"
-                      fill="#6366f1"
-                      fillOpacity={0.6}
-                      name="Messages"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="replies"
-                      stackId="1"
-                      stroke="#8b5cf6"
-                      fill="#8b5cf6"
-                      fillOpacity={0.4}
-                      name="Replies"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Stacked Bar Chart - showing breakdown by channel */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">Channel Activity Breakdown</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={activityTimelineData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis type="number" stroke="#9ca3af" />
+                        <YAxis
+                          dataKey="name"
+                          type="category"
+                          width={100}
+                          tick={{ fontSize: 11 }}
+                          stroke="#9ca3af"
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.5rem',
+                          }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
+                                  <p className="font-semibold text-sm mb-1">{data.fullName}</p>
+                                  <p className="text-xs text-indigo-600">Messages: {data.messages}</p>
+                                  <p className="text-xs text-purple-600">Replies: {data.replies}</p>
+                                  <p className="text-xs font-semibold mt-1">Total: {data.total}</p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Legend />
+                        <Bar dataKey="messages" stackId="a" fill="#6366f1" name="Messages" />
+                        <Bar dataKey="replies" stackId="a" fill="#8b5cf6" name="Replies" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Pie Chart - showing channel contribution */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">Channel Contribution</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={activityTimelineData}
+                          dataKey="total"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={100}
+                          label={({ name, percent, index }) => {
+                            // Only show name for top 3 channels
+                            if (index < 3) {
+                              return `${name}: ${(percent * 100).toFixed(0)}%`;
+                            }
+                            return `${(percent * 100).toFixed(0)}%`;
+                          }}
+                          labelLine={{ stroke: '#9ca3af', strokeWidth: 1 }}
+                        >
+                          {activityTimelineData.map((entry, index) => {
+                            // Harmonized color palette - indigo, purple, pink, amber, cyan, blue, rose
+                            const colors = [
+                              '#6366f1', // indigo-500
+                              '#8b5cf6', // purple-500
+                              '#ec4899', // pink-500
+                              '#f59e0b', // amber-500
+                              '#06b6d4', // cyan-500
+                              '#3b82f6', // blue-500
+                              '#f43f5e', // rose-500
+                            ];
+                            return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                          })}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.5rem',
+                          }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              const percentage = ((data.total / totalActivity) * 100).toFixed(1);
+                              return (
+                                <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
+                                  <p className="font-semibold text-sm mb-1">{data.fullName}</p>
+                                  <div className="flex items-center gap-3 text-xs mt-2">
+                                    <div className="flex items-center gap-1">
+                                      <MessageCircle className="h-3 w-3 text-indigo-600" />
+                                      <span>{data.messages}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Activity className="h-3 w-3 text-purple-600" />
+                                      <span>{data.replies}</span>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs font-semibold mt-2">
+                                    {data.total} activities ({percentage}%)
+                                  </p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Channel Participation Breakdown */}
-          {profile.channel_breakdown && profile.channel_breakdown.length > 0 && (
+          {/* Channel Participation Insights */}
+          {channelParticipationData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Channel Participation</CardTitle>
-                <CardDescription>Message activity across channels</CardDescription>
+                <CardTitle>Channel Participation Insights</CardTitle>
+                <CardDescription>
+                  Detailed breakdown of activity across {channelParticipationData.length} channels
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={Math.max(200, profile.channel_breakdown.length * 40)}>
-                  <BarChart
-                    data={profile.channel_breakdown}
-                    layout="horizontal"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis type="number" stroke="#9ca3af" />
-                    <YAxis
-                      dataKey="channel_name"
-                      type="category"
-                      width={120}
-                      tick={{ fontSize: 12 }}
-                      stroke="#9ca3af"
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '0.5rem',
-                      }}
-                    />
-                    <Bar
-                      dataKey="message_count"
-                      fill="#6366f1"
-                      name="Messages"
-                      radius={[0, 4, 4, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="space-y-6">
+                  {/* Top Channels Summary */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 rounded-lg border border-indigo-200">
+                      <div className="text-xl font-bold text-indigo-600 truncate" title={channelParticipationData[0]?.channel_name}>
+                        #{channelParticipationData[0]?.channel_name || 'N/A'}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Most Active Channel</div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-1 text-xs">
+                          <MessageCircle className="h-3 w-3 text-indigo-600" />
+                          <span className="font-semibold text-indigo-700">{channelParticipationData[0]?.message_count || 0}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs">
+                          <Activity className="h-3 w-3 text-indigo-600" />
+                          <span className="font-semibold text-indigo-700">{channelParticipationData[0]?.reply_count || 0}</span>
+                        </div>
+                        <span className="text-xs text-indigo-600">
+                          ({channelParticipationData[0]?.percentage.toFixed(1) || 0}%)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {channelParticipationData.length}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Active Channels</div>
+                      <div className="text-sm font-semibold text-purple-700 mt-2">
+                        out of {profile.total_channels} total
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-pink-50 to-pink-100 p-4 rounded-lg border border-pink-200">
+                      <div className="text-2xl font-bold text-pink-600">
+                        {(profile.total_activity / channelParticipationData.length).toFixed(1)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Avg per Channel</div>
+                      <div className="text-sm font-semibold text-pink-700 mt-2">
+                        activities each
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Bar Chart with Percentage */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium">Activity by Channel</h4>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <MessageCircle className="h-3 w-3" />
+                          <span>Messages</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Activity className="h-3 w-3" />
+                          <span>Replies</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {channelParticipationData.map((channel, index) => {
+                        const colors = [
+                          'bg-indigo-500',
+                          'bg-purple-500',
+                          'bg-pink-500',
+                          'bg-amber-500',
+                          'bg-cyan-500',
+                          'bg-blue-500',
+                          'bg-rose-500',
+                        ];
+                        const bgColor = colors[index % colors.length];
+
+                        return (
+                          <div key={channel.channel_name} className="space-y-1 group">
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <Hash className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span className="font-medium truncate">{channel.channel_name}</span>
+                              </div>
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                <div className="flex items-center gap-2 text-xs">
+                                  <div className="flex items-center gap-1 text-muted-foreground group-hover:text-indigo-600 transition-colors">
+                                    <MessageCircle className="h-3 w-3" />
+                                    <span>{channel.message_count}</span>
+                                  </div>
+                                  <span className="text-muted-foreground">/</span>
+                                  <div className="flex items-center gap-1 text-muted-foreground group-hover:text-purple-600 transition-colors">
+                                    <Activity className="h-3 w-3" />
+                                    <span>{channel.reply_count}</span>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-semibold w-12 text-right">
+                                  {channel.percentage.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                            <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${bgColor} transition-all duration-500 ease-out`}
+                                style={{ width: `${channel.percentage}%` }}
+                                title={`${channel.message_count} messages, ${channel.reply_count} replies`}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{channel.total} total activities</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Engagement Pattern */}
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium mb-3">Engagement Pattern</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="h-3 w-3 rounded-full bg-indigo-500" />
+                        <span className="text-muted-foreground">Messages:</span>
+                        <span className="font-semibold">{profile.total_messages}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="h-3 w-3 rounded-full bg-purple-500" />
+                        <span className="text-muted-foreground">Replies:</span>
+                        <span className="font-semibold">{profile.total_replies}</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs text-muted-foreground">
+                        {profile.total_messages > profile.total_replies
+                          ? '📝 More focused on initiating conversations'
+                          : profile.total_replies > profile.total_messages
+                          ? '💬 More focused on responding to discussions'
+                          : '⚖️ Balanced between starting and joining conversations'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -521,39 +740,71 @@ export default function UserProfileDetailPage() {
             </Card>
           )}
 
-          {/* Engagement Metrics */}
+          {/* Participation Overview */}
           <Card>
             <CardHeader>
-              <CardTitle>Engagement Metrics</CardTitle>
+              <CardTitle>Participation Overview</CardTitle>
+              <CardDescription>Activity breakdown over last {profile.analysis_period_days} days</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Total Channels</span>
-                <span className="font-semibold">{profile.total_channels}</span>
+            <CardContent className="space-y-4">
+              {/* Channel Breadth */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium">Channel Breadth</span>
+                  <span className="text-sm text-muted-foreground">
+                    {profile.active_channels}/{profile.total_channels}
+                  </span>
+                </div>
+                <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 transition-all"
+                    style={{
+                      width: `${(profile.active_channels / profile.total_channels) * 100}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Active in {((profile.active_channels / profile.total_channels) * 100).toFixed(0)}% of channels
+                </p>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Active Channels</span>
-                <span className="font-semibold">{profile.active_channels}</span>
+
+              {/* Activity Type Distribution */}
+              <div className="border-t pt-3">
+                <p className="text-sm font-medium mb-2">Activity Distribution</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MessageCircle className="h-4 w-4 text-indigo-600" />
+                      <span className="text-sm">Messages Posted</span>
+                    </div>
+                    <span className="font-semibold">{profile.total_messages}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-purple-600" />
+                      <span className="text-sm">Replies Given</span>
+                    </div>
+                    <span className="font-semibold">{profile.total_replies}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Messages</span>
-                <span className="font-semibold">{profile.total_messages}</span>
+
+              {/* Communication Pattern */}
+              <div className="border-t pt-3">
+                <p className="text-sm font-medium mb-2">Communication Style</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {profile.communication_style || 'Collaborative team member'}
+                </p>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Replies</span>
-                <span className="font-semibold">{profile.total_replies}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Engagement Score</span>
-                <span className="font-semibold">
-                  {profile.engagement_score?.toFixed(2) || '0.00'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Last Updated</span>
-                <span className="text-xs font-semibold">
-                  {formatLastActive(profile.last_updated)}
-                </span>
+
+              {/* Activity Recency */}
+              <div className="border-t pt-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Last Active</span>
+                  <span className="text-sm font-semibold">
+                    {formatLastActive(profile.last_updated)}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>

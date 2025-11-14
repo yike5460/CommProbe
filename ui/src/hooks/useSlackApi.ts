@@ -224,8 +224,8 @@ export const usePrefetchChannelSummary = () => {
 export const useFilteredSlackUsers = (
   workspaceId?: string,
   filters?: {
-    influenceLevel?: 'all' | 'high' | 'medium' | 'low';
     searchQuery?: string;
+    activityLevel?: 'all' | 'very-active' | 'active' | 'moderate' | 'low';
   }
 ) => {
   const { data, ...queryResult } = useSlackUsers(workspaceId);
@@ -236,9 +236,23 @@ export const useFilteredSlackUsers = (
 
   let filteredUsers = data.users;
 
-  // Filter by influence level
-  if (filters.influenceLevel && filters.influenceLevel !== 'all') {
-    filteredUsers = filteredUsers.filter((user) => user.influence_level === filters.influenceLevel);
+  // Filter by activity level
+  if (filters.activityLevel && filters.activityLevel !== 'all') {
+    filteredUsers = filteredUsers.filter((user) => {
+      const totalActivity = user.total_activity || 0;
+      switch (filters.activityLevel) {
+        case 'very-active':
+          return totalActivity >= 50;
+        case 'active':
+          return totalActivity >= 10 && totalActivity < 50;
+        case 'moderate':
+          return totalActivity >= 5 && totalActivity < 10;
+        case 'low':
+          return totalActivity >= 1 && totalActivity < 5;
+        default:
+          return true;
+      }
+    });
   }
 
   // Filter by search query
@@ -268,8 +282,8 @@ export const useFilteredSlackUsers = (
 export const useFilteredSlackChannels = (
   workspaceId?: string,
   filters?: {
-    sentiment?: 'all' | 'positive' | 'neutral' | 'negative';
     searchQuery?: string;
+    activityVolume?: 'all' | 'very-active' | 'active' | 'moderate' | 'quiet';
   }
 ) => {
   const { data, ...queryResult } = useSlackChannels(workspaceId);
@@ -280,9 +294,23 @@ export const useFilteredSlackChannels = (
 
   let filteredChannels = data.channels;
 
-  // Filter by sentiment
-  if (filters.sentiment && filters.sentiment !== 'all') {
-    filteredChannels = filteredChannels.filter((channel) => channel.sentiment === filters.sentiment);
+  // Filter by activity volume
+  if (filters.activityVolume && filters.activityVolume !== 'all') {
+    filteredChannels = filteredChannels.filter((channel) => {
+      const messagesAnalyzed = channel.messages_analyzed || 0;
+      switch (filters.activityVolume) {
+        case 'very-active':
+          return messagesAnalyzed >= 100;
+        case 'active':
+          return messagesAnalyzed >= 50 && messagesAnalyzed < 100;
+        case 'moderate':
+          return messagesAnalyzed >= 10 && messagesAnalyzed < 50;
+        case 'quiet':
+          return messagesAnalyzed < 10;
+        default:
+          return true;
+      }
+    });
   }
 
   // Filter by search query
@@ -352,7 +380,7 @@ export const useUpdateSlackConfig = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: slackApiService.updateSlackConfig,
+    mutationFn: (config) => slackApiService.updateSlackConfig(config),
     onSuccess: () => {
       // Invalidate config to refetch
       queryClient.invalidateQueries({ queryKey: slackQueryKeys.config() });

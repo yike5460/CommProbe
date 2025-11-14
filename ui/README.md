@@ -84,7 +84,14 @@ This frontend application provides a modern, responsive dashboard for the Legal 
 
 4. **Start Development Server**
    ```bash
+   # Default port (3000)
    npm run dev
+
+   # Or specify a custom port
+   PORT=3001 npm run dev
+
+   # Production server with custom port
+   PORT=8080 npm start
    ```
 
 ### Initial Setup Checklist

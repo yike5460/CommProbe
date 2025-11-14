@@ -648,11 +648,11 @@ def handler(event, context):
       name: 'supio-reddit-crawler-usage',
       description: 'Usage plan for Reddit Crawler API',
       throttle: {
-        rateLimit: 10,  // 10 requests per second
-        burstLimit: 20, // 20 concurrent requests
+        rateLimit: 100,  // 100 requests per second (increased for development)
+        burstLimit: 200, // 200 concurrent requests (increased for development)
       },
       quota: {
-        limit: 1000,    // 1000 requests per month
+        limit: 100000,   // 100,000 requests per month (increased for development)
         period: apigateway.Period.MONTH,
       },
       apiStages: [

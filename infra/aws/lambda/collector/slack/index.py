@@ -69,11 +69,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         dynamodb_resource = boto3.resource('dynamodb')
         jobs_table = dynamodb_resource.Table(SLACK_JOBS_TABLE)
 
-    # Try to get bot token from config table first, fallback to environment variable
-    bot_token = SLACK_BOT_TOKEN
+    # IMPORTANT: Always check DynamoDB config table FIRST (saved via UI takes precedence)
+    # Then fallback to environment variable if not found in DynamoDB
+    bot_token = None
     config_table_name = os.environ.get('CONFIG_TABLE_NAME', '')
 
-    if (not bot_token or bot_token == 'DISABLED') and config_table_name:
+    # Try to load from DynamoDB config table first (UI-saved token)
+    if config_table_name:
         try:
             dynamodb_resource = boto3.resource('dynamodb')
             config_table = dynamodb_resource.Table(config_table_name)
@@ -81,9 +83,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if 'Item' in response and response['Item'].get('bot_token'):
                 bot_token = response['Item']['bot_token']
-                logger.info("Using bot token from configuration table")
+                logger.info("Using bot token from DynamoDB configuration table (UI-saved)")
         except Exception as e:
             logger.warning(f"Could not load bot token from config table: {str(e)}")
+
+    # Fallback to environment variable if not found in DynamoDB
+    if not bot_token:
+        bot_token = SLACK_BOT_TOKEN
+        if bot_token and bot_token != 'DISABLED':
+            logger.info("Using bot token from environment variable (CDK-deployed)")
 
     # Check if Slack is disabled
     if bot_token == 'DISABLED' or not bot_token:
@@ -198,8 +206,9 @@ def analyze_user(
 
     logger.info(f"Found {total_messages} messages and {total_replies} replies across {active_channels} active channels")
 
-    # Analyze each channel with AI
+    # Analyze each channel with AI (limit to 10 for cost control)
     channel_analyses = []
+    ai_summaries_by_channel = {}  # Map channel_name -> ai_summary
     total_ai_tokens = 0
 
     for channel in limited_channels[:10]:  # Use already-limited channels
@@ -218,6 +227,7 @@ def analyze_user(
             )
 
             if ai_result.get('success'):
+                ai_summaries_by_channel[channel_name] = ai_result.get('analysis', '')
                 channel_analyses.append({
                     'channel_id': channel['id'],
                     'channel_name': channel_name,
@@ -228,6 +238,25 @@ def analyze_user(
                     'tokens_used': ai_result.get('tokens_used', 0)
                 })
                 total_ai_tokens += ai_result.get('tokens_used', 0)
+
+    # Build complete channel breakdown for ALL active channels (not just those with AI analysis)
+    # This ensures the UI displays all channels where the user has activity
+    complete_channel_breakdown = []
+    for channel in limited_channels:
+        channel_name = channel['name']
+        messages = user_messages.get(channel_name, [])
+        replies = user_replies.get(channel_name, [])
+
+        # Only include channels where user has activity
+        if messages or replies:
+            complete_channel_breakdown.append({
+                'channel_id': channel['id'],
+                'channel_name': channel_name,
+                'message_count': len(messages),
+                'reply_count': len(replies),
+                'last_activity': messages[-1]['timestamp'] if messages else replies[-1]['timestamp'] if replies else '',
+                'ai_summary': ai_summaries_by_channel.get(channel_name, '')  # Include AI summary if available
+            })
 
     # Generate overall insights across all channels
     summary_stats = {
@@ -270,7 +299,7 @@ def analyze_user(
         pain_points=extract_list_from_text(ai_insights, 'pain points', max_items=10),
         influence_level=slack_analyzer.calculate_influence_level(total_messages, total_replies, active_channels),
         channel_breakdown=[
-            ChannelActivity(**ch) for ch in channel_analyses
+            ChannelActivity(**ch) for ch in complete_channel_breakdown
         ],
         ai_insights=ai_insights,
         ai_persona_summary=extract_persona_summary(ai_insights),

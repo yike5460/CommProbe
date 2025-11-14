@@ -25,16 +25,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 
 export default function SlackUsersPage() {
   const [workspaceId, setWorkspaceId] = useState('default');
-  const [influenceLevel, setInfluenceLevel] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activityLevel, setActivityLevel] = useState<'all' | 'very-active' | 'active' | 'moderate' | 'low'>('all');
   const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useFilteredSlackUsers(workspaceId, {
-    influenceLevel,
     searchQuery,
+    activityLevel,
   });
 
   return (
@@ -96,16 +96,17 @@ export default function SlackUsersPage() {
         </Dialog>
       </div>
 
-      {/* Filters */}
+      {/* Filters - Compact Design */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            {/* Workspace Filter */}
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Workspace</label>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-3">
+            <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+
+            {/* Workspace Filter - Compact */}
+            <div className="min-w-[180px]">
               <Select value={workspaceId} onValueChange={setWorkspaceId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Workspace" />
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Workspace" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="default">Default Workspace</SelectItem>
@@ -113,28 +114,31 @@ export default function SlackUsersPage() {
               </Select>
             </div>
 
-            {/* Influence Level Filter */}
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Influence Level</label>
+            <div className="h-6 w-px bg-border" />
+
+            {/* Activity Level Filter - Compact */}
+            <div className="min-w-[200px]">
               <Select
-                value={influenceLevel}
-                onValueChange={(value: any) => setInfluenceLevel(value)}
+                value={activityLevel}
+                onValueChange={(value: any) => setActivityLevel(value)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Levels" />
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Activity Level" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Levels</SelectItem>
-                  <SelectItem value="high">High Influence</SelectItem>
-                  <SelectItem value="medium">Medium Influence</SelectItem>
-                  <SelectItem value="low">Low Influence</SelectItem>
+                  <SelectItem value="all">All Activity Levels</SelectItem>
+                  <SelectItem value="very-active">Very Active (50+)</SelectItem>
+                  <SelectItem value="active">Active (10-49)</SelectItem>
+                  <SelectItem value="moderate">Moderate (5-9)</SelectItem>
+                  <SelectItem value="low">Low Activity (1-4)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Search */}
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Search</label>
+            <div className="h-6 w-px bg-border" />
+
+            {/* Search - Compact and Flex Grow */}
+            <div className="flex-1 min-w-[250px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -142,14 +146,14 @@ export default function SlackUsersPage() {
                   placeholder="Search by name or email..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-9"
                 />
               </div>
             </div>
           </div>
 
-          {/* Results Count */}
-          <div className="mt-4 text-sm text-muted-foreground">
+          {/* Results Count - Compact */}
+          <div className="mt-3 text-xs text-muted-foreground pl-7">
             {isLoading ? (
               <span>Loading...</span>
             ) : error ? (
@@ -189,8 +193,8 @@ export default function SlackUsersPage() {
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Users Found</h3>
             <p className="text-muted-foreground mb-4">
-              {searchQuery || influenceLevel !== 'all'
-                ? 'Try adjusting your filters to see more results'
+              {searchQuery
+                ? 'Try adjusting your search to see more results'
                 : 'Start by analyzing a team member to see their profile here'}
             </p>
             <Button onClick={() => setShowAnalysisDialog(true)}>

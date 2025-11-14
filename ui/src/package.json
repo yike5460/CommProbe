@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p ${PORT:-3000}",
     "build": "next build",
     "build:cf": "npx @cloudflare/next-on-pages@1",
     "preview": "npm run build:cf && wrangler pages dev .vercel/output/static",
     "deploy": "npm run build:cf && wrangler pages deploy .vercel/output/static",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3000}",
     "lint": "eslint"
   },
   "dependencies": {
