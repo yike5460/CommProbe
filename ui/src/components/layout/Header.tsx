@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSystemHealth } from '@/hooks/useApi';
 import { useAppStore } from '@/stores/appStore';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -26,12 +28,15 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle,
-  XCircle
+  XCircle,
+  LogOut
 } from 'lucide-react';
 
 export function Header() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
+  const router = useRouter();
+  const { logout } = useAuth();
 
   // Only access the store after hydration to avoid SSR mismatch
   const theme = useAppStore((state) =>
@@ -45,6 +50,11 @@ export function Header() {
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
   const getHealthIcon = () => {
     if (healthLoading) return <RefreshCw className="h-4 w-4 animate-spin" />;
@@ -162,8 +172,12 @@ export function Header() {
                 Help & Support
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
-                Sign out
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
